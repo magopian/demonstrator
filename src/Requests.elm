@@ -9,6 +9,23 @@ import Types exposing (..)
 -- DECODERS
 
 
+entityDecoder : Decoder Entity
+entityDecoder =
+    map3 Entity
+        (oneOf [ field "isPersonsEntity" bool, succeed False ])
+        (field "label" string)
+        (oneOf [ field "roles" (list roleDecoder), succeed [] ])
+
+
+roleDecoder : Decoder Role
+roleDecoder =
+    map4 Role
+        (field "key" string)
+        (field "label" string)
+        (field "plural" string)
+        (oneOf [ field "subroles" (list string), succeed [] ])
+
+
 variableCommonFieldsDecoder : Decoder VariableCommonFields
 variableCommonFieldsDecoder =
     map7 VariableCommonFields
@@ -81,6 +98,11 @@ variablesResponseDecoder =
 
 
 -- REQUESTS
+
+
+entities : String -> Http.Request (Dict String Entity)
+entities baseUrl =
+    Http.get (baseUrl ++ "/2/entities") (field "entities" (dict entityDecoder))
 
 
 variables : String -> Http.Request VariablesResponse

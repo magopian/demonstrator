@@ -33,14 +33,14 @@ type InputValue
 
 
 type alias Individual =
-    { inputValues :
-        Dict String InputValue
-        -- TODO roles
+    { inputValues : Dict String InputValue
+    , roles : Dict String String
     }
 
 
 type alias Model =
     { displayDisclaimer : Bool
+    , entitiesWebData : WebData (Dict String Entity)
     , individuals : List Individual
     , variablesWebData : WebData VariablesResponse
     }
@@ -49,10 +49,15 @@ type alias Model =
 initialModel : Model
 initialModel =
     { displayDisclaimer = True
+    , entitiesWebData = NotAsked
     , individuals =
         [ { inputValues =
                 Dict.fromList
                     [ ( "salaire_de_base", FloatInputValue 10000 )
+                    ]
+          , roles =
+                Dict.fromList
+                    [ ( "parent", "famille" )
                     ]
           }
         ]
@@ -69,11 +74,18 @@ init =
         newModel =
             { initialModel | variablesWebData = Loading }
 
+        entitiesCmd =
+            Requests.entities baseUrl
+                |> RemoteData.sendRequest
+                |> Cmd.map EntitiesResult
+
         variablesCmd =
-            Http.send VariablesResult (Requests.variables baseUrl)
+            Requests.variables baseUrl
+                |> RemoteData.sendRequest
+                |> Cmd.map VariablesResult
     in
         -- TODO Load baseUrl and displayDisclaimer from flags and store setting in localStorage.
-        ( newModel, variablesCmd )
+        newModel ! [ entitiesCmd, variablesCmd ]
 
 
 
@@ -82,8 +94,9 @@ init =
 
 type Msg
     = CloseDisclaimer
+    | EntitiesResult (WebData (Dict String Entity))
     | SetInputValue Int String InputValue
-    | VariablesResult (Result Http.Error VariablesResponse)
+    | VariablesResult (WebData VariablesResponse)
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -91,6 +104,13 @@ update msg model =
     case msg of
         CloseDisclaimer ->
             ( model, Cmd.none )
+
+        EntitiesResult webData ->
+            let
+                newModel =
+                    { model | entitiesWebData = webData }
+            in
+                ( newModel, Cmd.none )
 
         SetInputValue index name inputValue ->
             let
@@ -113,10 +133,10 @@ update msg model =
             in
                 ( newModel, Cmd.none )
 
-        VariablesResult result ->
+        VariablesResult webData ->
             let
                 newModel =
-                    { model | variablesWebData = RemoteData.fromResult result }
+                    { model | variablesWebData = webData }
             in
                 ( newModel, Cmd.none )
 
@@ -144,26 +164,27 @@ view model =
               else
                 []
              )
-                ++ [ case model.variablesWebData of
+                ++ (case RemoteData.append model.entitiesWebData model.variablesWebData of
                         NotAsked ->
-                            text ""
+                            []
 
                         Loading ->
-                            p [] [ text "Loading variables data..." ]
+                            [ p [] [ text "Loading data..." ] ]
 
                         Failure err ->
                             let
                                 _ =
-                                    Debug.log "variablesWebData Failure" err
+                                    Debug.log "Load data failure" err
                             in
-                                div [ class "alert alert-danger" ]
+                                [ div [ class "alert alert-danger" ]
                                     [ h4 [] [ text "We are sorry" ]
-                                    , p [] [ text "There was an error loading variables data." ]
+                                    , p [] [ text "There was an error loading data." ]
                                     ]
+                                ]
 
-                        Success variablesResponse ->
-                            viewIndividuals variablesResponse model.individuals
-                   ]
+                        Success ( entities, variablesResponse ) ->
+                            [ viewIndividuals entities variablesResponse model.individuals ]
+                   )
             )
          ]
         )
@@ -230,8 +251,8 @@ viewIndividual variablesResponse index individual =
         ]
 
 
-viewIndividuals : VariablesResponse -> List Individual -> Html Msg
-viewIndividuals variablesResponse individuals =
+viewIndividuals : Dict String Entity -> VariablesResponse -> List Individual -> Html Msg
+viewIndividuals entities variablesResponse individuals =
     div []
         (individuals
             |> List.indexedMap (viewIndividual variablesResponse)

@@ -3,6 +3,21 @@ module Types exposing (..)
 import Dict exposing (Dict)
 
 
+type alias Role =
+    { key : String
+    , label : String
+    , plural : String
+    , subroles : List String
+    }
+
+
+type alias Entity =
+    { isPersonsEntity : Bool
+    , label : String
+    , roles : List Role
+    }
+
+
 type alias VariableCommonFields =
     { entity : String
     , label : Maybe String
