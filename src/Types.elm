@@ -5,6 +5,7 @@ import Dict exposing (Dict)
 
 type alias VariableCommonFields =
     { entity : String
+    , label : Maybe String
     , name : String
     , sourceCode : String
     , sourceFilePath : String
@@ -14,15 +15,11 @@ type alias VariableCommonFields =
 
 
 type alias BoolVariableFields =
-    { default : Bool
-    , label : Maybe String
-    }
+    { default : Bool }
 
 
 type alias DateVariableFields =
-    { default : String
-    , label : Maybe String
-    }
+    { default : String }
 
 
 type alias EnumVariableFields =
@@ -32,15 +29,11 @@ type alias EnumVariableFields =
 
 
 type alias FloatVariableFields =
-    { default : Float
-    , label : Maybe String
-    }
+    { default : Float }
 
 
 type alias IntVariableFields =
-    { default : Int
-    , label : Maybe String
-    }
+    { default : Int }
 
 
 type Variable
@@ -55,5 +48,24 @@ type alias VariablesResponse =
     { countryPackageName : String
     , countryPackageVersion : String
     , currency : String
-    , variables : List Variable
+    , variables : Dict String Variable
     }
+
+
+variableCommonFields : Variable -> VariableCommonFields
+variableCommonFields variable =
+    case variable of
+        (BoolVariable ( x, _ )) as variable ->
+            x
+
+        (DateVariable ( x, _ )) as variable ->
+            x
+
+        (EnumVariable ( x, _ )) as variable ->
+            x
+
+        (FloatVariable ( x, _ )) as variable ->
+            x
+
+        (IntVariable ( x, _ )) as variable ->
+            x

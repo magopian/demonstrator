@@ -1,8 +1,9 @@
 module Main exposing (..)
 
+import Dict exposing (Dict)
 import Html exposing (..)
 import Html.Attributes exposing (..)
-import Html.Events exposing (onClick)
+import Html.Events exposing (..)
 import Http
 import RemoteData exposing (RemoteData(..), WebData)
 import Requests
@@ -23,8 +24,24 @@ main =
 -- MODEL
 
 
+type InputValue
+    = BoolInputValue Bool
+    | DateInputValue String
+    | EnumInputValue String
+    | FloatInputValue Float
+    | IntInputValue Int
+
+
+type alias Individual =
+    { inputValues :
+        Dict String InputValue
+        -- TODO roles
+    }
+
+
 type alias Model =
     { displayDisclaimer : Bool
+    , individuals : List Individual
     , variablesWebData : WebData VariablesResponse
     }
 
@@ -32,6 +49,13 @@ type alias Model =
 initialModel : Model
 initialModel =
     { displayDisclaimer = True
+    , individuals =
+        [ { inputValues =
+                Dict.fromList
+                    [ ( "salaire_de_base", FloatInputValue 10000 )
+                    ]
+          }
+        ]
     , variablesWebData = NotAsked
     }
 
@@ -58,6 +82,7 @@ init =
 
 type Msg
     = CloseDisclaimer
+    | SetInputValue Int String InputValue
     | VariablesResult (Result Http.Error VariablesResponse)
 
 
@@ -66,6 +91,27 @@ update msg model =
     case msg of
         CloseDisclaimer ->
             ( model, Cmd.none )
+
+        SetInputValue index name inputValue ->
+            let
+                newIndividuals =
+                    model.individuals
+                        |> List.indexedMap
+                            (\index1 individual ->
+                                if index == index1 then
+                                    let
+                                        newInputValues =
+                                            Dict.insert name inputValue individual.inputValues
+                                    in
+                                        { individual | inputValues = newInputValues }
+                                else
+                                    individual
+                            )
+
+                newModel =
+                    { model | individuals = newIndividuals }
+            in
+                ( newModel, Cmd.none )
 
         VariablesResult result ->
             let
@@ -116,7 +162,7 @@ view model =
                                     ]
 
                         Success variablesResponse ->
-                            p [] [ text "OK" ]
+                            viewIndividuals variablesResponse model.individuals
                    ]
             )
          ]
@@ -149,6 +195,109 @@ viewDisclaimer =
           --     , onClick CloseDisclaimer
           --     ]
           --     [ text "J'ai compris, ne plus afficher" ]
+        ]
+
+
+viewIndividual : VariablesResponse -> Int -> Individual -> Html Msg
+viewIndividual variablesResponse index individual =
+    div [ class "panel panel-default" ]
+        [ div [ class "panel-heading" ]
+            [ h3 [ class "panel-title" ]
+                -- TODO i18n
+                [ text ("Individual " ++ (toString (index + 1))) ]
+            ]
+        , ul [ class "list-group" ]
+            [ li [ class "list-group-item" ]
+                [ div [ class "form-horizontal" ]
+                    (individual.inputValues
+                        |> Dict.toList
+                        |> List.map
+                            (\( name, inputValue ) ->
+                                let
+                                    label =
+                                        variablesResponse.variables
+                                            |> Dict.get name
+                                            |> Maybe.andThen (variableCommonFields >> .label)
+                                            |> Maybe.withDefault name
+                                in
+                                    viewInputValue index name label inputValue
+                            )
+                    )
+                ]
+            , li [ class "list-group-item" ]
+                [ p [] [ text "Roles" ] ]
+            ]
+        ]
+
+
+viewIndividuals : VariablesResponse -> List Individual -> Html Msg
+viewIndividuals variablesResponse individuals =
+    div []
+        (individuals
+            |> List.indexedMap (viewIndividual variablesResponse)
+        )
+
+
+viewInputValue : Int -> String -> String -> InputValue -> Html Msg
+viewInputValue index name label inputValue =
+    div [ class "form-group" ]
+        [ Html.label [ class "col-sm-2 control-label" ]
+            [ text label ]
+        , div [ class "col-sm-10" ]
+            [ case inputValue of
+                BoolInputValue bool ->
+                    text "TODO"
+
+                DateInputValue string ->
+                    text "TODO"
+
+                EnumInputValue string ->
+                    text "TODO"
+
+                FloatInputValue float ->
+                    input
+                        [ class "form-control"
+                        , onInput
+                            (\str ->
+                                let
+                                    newInputValue =
+                                        case String.toFloat str of
+                                            Ok newFloat ->
+                                                FloatInputValue newFloat
+
+                                            Err _ ->
+                                                FloatInputValue float
+                                in
+                                    SetInputValue index name newInputValue
+                            )
+                        , step "any"
+                        , type_ "number"
+                        , value (toString float)
+                        ]
+                        []
+
+                IntInputValue int ->
+                    input
+                        [ class "form-control"
+                        , onInput
+                            (\str ->
+                                let
+                                    newInputValue =
+                                        case String.toInt str of
+                                            Ok newInt ->
+                                                IntInputValue newInt
+
+                                            Err _ ->
+                                                IntInputValue int
+                                in
+                                    SetInputValue index name newInputValue
+                            )
+                        , step "1"
+                        , type_ "number"
+                        , value (toString int)
+                        ]
+                        []
+            ]
         ]
 
 

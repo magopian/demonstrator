@@ -1,5 +1,6 @@
 module Requests exposing (..)
 
+import Dict exposing (Dict)
 import Http
 import Json.Decode exposing (..)
 import Types exposing (..)
@@ -10,8 +11,9 @@ import Types exposing (..)
 
 variableCommonFieldsDecoder : Decoder VariableCommonFields
 variableCommonFieldsDecoder =
-    map6 VariableCommonFields
+    map7 VariableCommonFields
         (field "entity" string)
+        (maybe (field "label" string))
         (field "name" string)
         (field "source_code" string)
         (field "source_file_path" string)
@@ -26,15 +28,13 @@ variableDecoder =
             (\variableCommonFields ->
                 case variableCommonFields.type_ of
                     "Boolean" ->
-                        map2 BoolVariableFields
+                        map BoolVariableFields
                             (field "default" bool)
-                            (maybe (field "label" string))
                             |> map (\fields -> BoolVariable ( variableCommonFields, fields ))
 
                     "Date" ->
-                        map2 DateVariableFields
+                        map DateVariableFields
                             (field "default" string)
-                            (maybe (field "label" string))
                             |> map (\fields -> DateVariable ( variableCommonFields, fields ))
 
                     "Enumeration" ->
@@ -44,15 +44,13 @@ variableDecoder =
                             |> map (\fields -> EnumVariable ( variableCommonFields, fields ))
 
                     "Float" ->
-                        map2 FloatVariableFields
+                        map FloatVariableFields
                             (field "default" float)
-                            (maybe (field "label" string))
                             |> map (\fields -> FloatVariable ( variableCommonFields, fields ))
 
                     "Integer" ->
-                        map2 IntVariableFields
+                        map IntVariableFields
                             (field "default" int)
-                            (maybe (field "label" string))
                             |> map (\fields -> IntVariable ( variableCommonFields, fields ))
 
                     _ ->
@@ -66,7 +64,19 @@ variablesResponseDecoder =
         (field "country_package_name" string)
         (field "country_package_version" string)
         (field "currency" string)
-        (field "variables" (list variableDecoder))
+        (field "variables"
+            (list variableDecoder
+                |> map
+                    (List.map
+                        (\variable ->
+                            ( variableCommonFields variable |> .name
+                            , variable
+                            )
+                        )
+                        >> Dict.fromList
+                    )
+            )
+        )
 
 
 
