@@ -1,4 +1,4 @@
-# Elm project
+# OpenFisca Demonstrator
 
 ## Getting started
 
