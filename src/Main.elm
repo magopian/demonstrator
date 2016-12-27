@@ -3,6 +3,10 @@ module Main exposing (..)
 import Html exposing (..)
 import Html.Attributes exposing (..)
 import Html.Events exposing (onClick)
+import Http
+import RemoteData exposing (RemoteData(..), WebData)
+import Requests
+import Types exposing (..)
 
 
 main : Program Never Model Msg
@@ -20,18 +24,32 @@ main =
 
 
 type alias Model =
-    { displayDisclaimer : Bool }
+    { displayDisclaimer : Bool
+    , variablesWebData : WebData VariablesResponse
+    }
 
 
 initialModel : Model
 initialModel =
-    { displayDisclaimer = True }
+    { displayDisclaimer = True
+    , variablesWebData = NotAsked
+    }
 
 
 init : ( Model, Cmd Msg )
 init =
-    -- TODO Load displayDisclaimer from flags and store setting in localStorage.
-    ( initialModel, Cmd.none )
+    let
+        baseUrl =
+            "http://localhost:2001/api"
+
+        newModel =
+            { initialModel | variablesWebData = Loading }
+
+        variablesCmd =
+            Http.send VariablesResult (Requests.variables baseUrl)
+    in
+        -- TODO Load baseUrl and displayDisclaimer from flags and store setting in localStorage.
+        ( newModel, variablesCmd )
 
 
 
@@ -40,6 +58,7 @@ init =
 
 type Msg
     = CloseDisclaimer
+    | VariablesResult (Result Http.Error VariablesResponse)
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -47,6 +66,13 @@ update msg model =
     case msg of
         CloseDisclaimer ->
             ( model, Cmd.none )
+
+        VariablesResult result ->
+            let
+                newModel =
+                    { model | variablesWebData = RemoteData.fromResult result }
+            in
+                ( newModel, Cmd.none )
 
 
 
@@ -72,7 +98,26 @@ view model =
               else
                 []
              )
-                ++ []
+                ++ [ case model.variablesWebData of
+                        NotAsked ->
+                            text ""
+
+                        Loading ->
+                            p [] [ text "Loading variables data..." ]
+
+                        Failure err ->
+                            let
+                                _ =
+                                    Debug.log "variablesWebData Failure" err
+                            in
+                                div [ class "alert alert-danger" ]
+                                    [ h4 [] [ text "We are sorry" ]
+                                    , p [] [ text "There was an error loading variables data." ]
+                                    ]
+
+                        Success variablesResponse ->
+                            p [] [ text "OK" ]
+                   ]
             )
          ]
         )
@@ -80,7 +125,7 @@ view model =
 
 viewDisclaimer : Html Msg
 viewDisclaimer =
-    div [ class "alert alert-warning disclaimer" ]
+    div [ class "alert alert-info" ]
         [ button
             [ attribute "aria-hidden" "true"
             , attribute "data-dismiss" "alert"
@@ -89,6 +134,7 @@ viewDisclaimer =
             , type_ "button"
             ]
             [ text "×" ]
+          -- TODO Translate in english
         , h4 [] [ text "À propos de cet outil" ]
         , ul []
             [ li [] [ text "OpenFisca est un simulateur socio-fiscal en cours de développement." ]
