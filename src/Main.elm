@@ -4,7 +4,7 @@ import Dict exposing (Dict)
 import Html exposing (..)
 import Html.Attributes exposing (..)
 import Html.Events exposing (..)
-import Http
+import Json.Decode as Decode
 import RemoteData exposing (RemoteData(..), WebData)
 import Requests
 import Types exposing (..)
@@ -24,20 +24,6 @@ main =
 -- MODEL
 
 
-type InputValue
-    = BoolInputValue Bool
-    | DateInputValue String
-    | EnumInputValue String
-    | FloatInputValue Float
-    | IntInputValue Int
-
-
-type alias Individual =
-    { inputValues : Dict String InputValue
-    , roles : Dict String String
-    }
-
-
 type alias Model =
     { displayDisclaimer : Bool
     , entitiesWebData : WebData (Dict String Entity)
@@ -50,23 +36,30 @@ initialModel : Model
 initialModel =
     { displayDisclaimer = True
     , entitiesWebData = NotAsked
-    , individuals =
-        [ { inputValues =
-                Dict.fromList
-                    [ ( "salaire_de_base", FloatInputValue 10000 )
-                    ]
-          , roles =
-                Dict.fromList
-                    [ ( "parent", "famille" )
-                    ]
-          }
-        ]
+    , individuals = []
     , variablesWebData = NotAsked
     }
 
 
+initialRoles : Dict String Entity -> Dict String String
+initialRoles entities =
+    entities
+        |> Dict.toList
+        |> List.filterMap
+            (\( key, entity ) ->
+                if entity.isPersonsEntity then
+                    Nothing
+                else
+                    entity.roles
+                        |> List.head
+                        |> Maybe.map (\firstRole -> ( key, pluralOrKey firstRole ))
+            )
+        |> Dict.fromList
+
+
 init : ( Model, Cmd Msg )
 init =
+    -- TODO Load baseUrl and displayDisclaimer from flags and store setting in localStorage.
     let
         baseUrl =
             "http://localhost:2001/api"
@@ -84,7 +77,6 @@ init =
                 |> RemoteData.sendRequest
                 |> Cmd.map VariablesResult
     in
-        -- TODO Load baseUrl and displayDisclaimer from flags and store setting in localStorage.
         newModel ! [ entitiesCmd, variablesCmd ]
 
 
@@ -96,6 +88,7 @@ type Msg
     = CloseDisclaimer
     | EntitiesResult (WebData (Dict String Entity))
     | SetInputValue Int String InputValue
+    | SetRole Int String String
     | VariablesResult (WebData VariablesResponse)
 
 
@@ -107,8 +100,25 @@ update msg model =
 
         EntitiesResult webData ->
             let
+                newIndividuals =
+                    case webData of
+                        Success entities ->
+                            [ { inputValues =
+                                    Dict.fromList
+                                        [ ( "salaire_de_base", FloatInputValue 0 )
+                                        ]
+                              , roles = initialRoles entities
+                              }
+                            ]
+
+                        _ ->
+                            []
+
                 newModel =
-                    { model | entitiesWebData = webData }
+                    { model
+                        | entitiesWebData = webData
+                        , individuals = newIndividuals
+                    }
             in
                 ( newModel, Cmd.none )
 
@@ -124,6 +134,27 @@ update msg model =
                                             Dict.insert name inputValue individual.inputValues
                                     in
                                         { individual | inputValues = newInputValues }
+                                else
+                                    individual
+                            )
+
+                newModel =
+                    { model | individuals = newIndividuals }
+            in
+                ( newModel, Cmd.none )
+
+        SetRole index entityKey roleKey ->
+            let
+                newIndividuals =
+                    model.individuals
+                        |> List.indexedMap
+                            (\index1 individual ->
+                                if index == index1 then
+                                    let
+                                        newRoles =
+                                            Dict.insert entityKey roleKey individual.roles
+                                    in
+                                        { individual | roles = newRoles }
                                 else
                                     individual
                             )
@@ -178,7 +209,7 @@ view model =
                             in
                                 [ div [ class "alert alert-danger" ]
                                     [ h4 [] [ text "We are sorry" ]
-                                    , p [] [ text "There was an error loading data." ]
+                                    , p [] [ text "There was an error while loading data." ]
                                     ]
                                 ]
 
@@ -219,34 +250,86 @@ viewDisclaimer =
         ]
 
 
-viewIndividual : VariablesResponse -> Int -> Individual -> Html Msg
-viewIndividual variablesResponse index individual =
-    div [ class "panel panel-default" ]
-        [ div [ class "panel-heading" ]
-            [ h3 [ class "panel-title" ]
-                -- TODO i18n
-                [ text ("Individual " ++ (toString (index + 1))) ]
-            ]
-        , ul [ class "list-group" ]
-            [ li [ class "list-group-item" ]
-                [ div [ class "form-horizontal" ]
-                    (individual.inputValues
-                        |> Dict.toList
-                        |> List.map
-                            (\( name, inputValue ) ->
-                                let
-                                    label =
-                                        variablesResponse.variables
-                                            |> Dict.get name
-                                            |> Maybe.andThen (variableCommonFields >> .label)
-                                            |> Maybe.withDefault name
-                                in
-                                    viewInputValue index name label inputValue
-                            )
+viewIndividual : Dict String Entity -> VariablesResponse -> Int -> Individual -> Html Msg
+viewIndividual entities variablesResponse index individual =
+    let
+        individualLabel =
+            entities
+                |> Dict.toList
+                |> List.filterMap
+                    (\( _, entity ) ->
+                        if entity.isPersonsEntity then
+                            Just entity.label
+                        else
+                            Nothing
                     )
+                |> List.head
+                |> Maybe.withDefault "Individual"
+    in
+        div [ class "panel panel-default" ]
+            [ div [ class "panel-heading" ]
+                [ h3 [ class "panel-title" ]
+                    [ text (individualLabel ++ " " ++ (toString (index + 1))) ]
                 ]
-            , li [ class "list-group-item" ]
-                [ p [] [ text "Roles" ] ]
+            , ul [ class "list-group" ]
+                [ li [ class "list-group-item" ]
+                    [ div [ class "form-horizontal" ]
+                        (individual.inputValues
+                            |> Dict.toList
+                            |> List.map
+                                (\( name, inputValue ) ->
+                                    let
+                                        label =
+                                            variablesResponse.variables
+                                                |> Dict.get name
+                                                |> Maybe.andThen (variableCommonFields >> .label)
+                                                |> Maybe.withDefault name
+                                    in
+                                        viewInputValue index name label inputValue
+                                )
+                        )
+                    ]
+                , li [ class "list-group-item" ]
+                    [ p [] [ text "Roles" ]
+                    , ul []
+                        (individual.roles
+                            |> Dict.toList
+                            |> List.filterMap
+                                (\( entityKey, roleKey ) ->
+                                    Dict.get entityKey entities
+                                        |> Maybe.andThen
+                                            (\entity ->
+                                                findRole entity.roles roleKey
+                                                    |> Maybe.map (viewIndividualRole entities index entityKey entity)
+                                            )
+                                )
+                        )
+                    ]
+                ]
+            ]
+
+
+viewIndividualRole : Dict String Entity -> Int -> String -> Entity -> Role -> Html Msg
+viewIndividualRole entities index entityKey entity role =
+    li []
+        [ label []
+            [ text entity.label
+            , text " "
+              -- TODO Use CSS
+            , select
+                [ on "change"
+                    (targetValue |> Decode.map (SetRole index entityKey))
+                ]
+                (entity.roles
+                    |> List.map
+                        (\role1 ->
+                            option
+                                [ selected (role1.key == role.key)
+                                , value (pluralOrKey role1)
+                                ]
+                                [ text role1.label ]
+                        )
+                )
             ]
         ]
 
@@ -255,7 +338,7 @@ viewIndividuals : Dict String Entity -> VariablesResponse -> List Individual -> 
 viewIndividuals entities variablesResponse individuals =
     div []
         (individuals
-            |> List.indexedMap (viewIndividual variablesResponse)
+            |> List.indexedMap (viewIndividual entities variablesResponse)
         )
 
 

@@ -3,6 +3,7 @@ module Requests exposing (..)
 import Dict exposing (Dict)
 import Http
 import Json.Decode exposing (..)
+import Json.Decode.Extra exposing (..)
 import Types exposing (..)
 
 
@@ -12,9 +13,14 @@ import Types exposing (..)
 entityDecoder : Decoder Entity
 entityDecoder =
     map3 Entity
-        (oneOf [ field "isPersonsEntity" bool, succeed False ])
+        (field "isPersonsEntity" bool |> withDefault False)
         (field "label" string)
-        (oneOf [ field "roles" (list roleDecoder), succeed [] ])
+        -- TODO (list roleDecoder) does not work with optionalField
+        -- create an issue at https://github.com/elm-community/json-extra
+        -- (optionalField "roles" (dict roleDecoder)
+        --     |> map (Maybe.map Dict.values >> Maybe.withDefault [])
+        -- )
+        (field "roles" (list roleDecoder) |> withDefault [])
 
 
 roleDecoder : Decoder Role
@@ -22,8 +28,13 @@ roleDecoder =
     map4 Role
         (field "key" string)
         (field "label" string)
-        (field "plural" string)
-        (oneOf [ field "subroles" (list string), succeed [] ])
+        (field "plural" string |> withDefault "")
+        -- TODO (list string) does not work with optionalField
+        -- create an issue at https://github.com/elm-community/json-extra
+        -- (optionalField "subroles" (dict string)
+        --     |> map (Maybe.map Dict.values >> Maybe.withDefault [])
+        -- )
+        (field "subroles" (list string) |> withDefault [])
 
 
 variableCommonFieldsDecoder : Decoder VariableCommonFields

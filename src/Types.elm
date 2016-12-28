@@ -3,6 +3,38 @@ module Types exposing (..)
 import Dict exposing (Dict)
 
 
+-- HELPERS
+
+
+find : (a -> Bool) -> List a -> Maybe a
+find f xs =
+    xs
+        |> List.filter f
+        |> List.head
+
+
+
+-- INDIVIDUALS
+
+
+type alias Individual =
+    { inputValues : Dict String InputValue
+    , roles : Dict String String
+    }
+
+
+type InputValue
+    = BoolInputValue Bool
+    | DateInputValue String
+    | EnumInputValue String
+    | FloatInputValue Float
+    | IntInputValue Int
+
+
+
+-- ENTITIES
+
+
 type alias Role =
     { key : String
     , label : String
@@ -16,6 +48,34 @@ type alias Entity =
     , label : String
     , roles : List Role
     }
+
+
+findRole : List Role -> String -> Maybe Role
+findRole roles roleKey =
+    find
+        (\{ key, plural } ->
+            let
+                pluralOrKey =
+                    if String.isEmpty plural then
+                        key
+                    else
+                        plural
+            in
+                pluralOrKey == roleKey
+        )
+        roles
+
+
+pluralOrKey : Role -> String
+pluralOrKey role =
+    if String.isEmpty role.plural then
+        role.key
+    else
+        role.plural
+
+
+
+-- VARIABLES
 
 
 type alias VariableCommonFields =
