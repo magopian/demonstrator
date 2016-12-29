@@ -158,7 +158,11 @@ update msg model =
             CalculateResult webData ->
                 let
                     newModel =
-                        { model | calculateWebData = webData }
+                        { model
+                            | calculateWebData =
+                                webData
+                                    |> RemoteData.mapError (Debug.log "model.calculateWebData Failure")
+                        }
                 in
                     ( newModel, Cmd.none )
 
@@ -177,7 +181,10 @@ update msg model =
 
                     newModel =
                         { model
-                            | entitiesWebData = webData
+                            | calculateWebData = Loading
+                            , entitiesWebData =
+                                webData
+                                    |> RemoteData.mapError (Debug.log "model.entitiesWebData Failure")
                             , individuals = newIndividuals
                         }
 
@@ -203,7 +210,10 @@ update msg model =
                                 )
 
                     newModel =
-                        { model | individuals = newIndividuals }
+                        { model
+                            | calculateWebData = Loading
+                            , individuals = newIndividuals
+                        }
 
                     cmds =
                         [ calculateCmd newIndividuals ]
@@ -227,7 +237,10 @@ update msg model =
                                 )
 
                     newModel =
-                        { model | individuals = newIndividuals }
+                        { model
+                            | calculateWebData = Loading
+                            , individuals = newIndividuals
+                        }
 
                     cmds =
                         [ calculateCmd newIndividuals ]
@@ -237,7 +250,11 @@ update msg model =
             VariablesResult webData ->
                 let
                     newModel =
-                        { model | variablesWebData = webData }
+                        { model
+                            | variablesWebData =
+                                webData
+                                    |> RemoteData.mapError (Debug.log "model.variablesWebData Failure")
+                        }
                 in
                     ( newModel, Cmd.none )
 
@@ -277,17 +294,13 @@ view model =
                             ]
 
                         Failure err ->
-                            let
-                                _ =
-                                    Debug.log "Load data failure" err
-                            in
-                                [ div [ class "alert alert-danger" ]
-                                    -- TODO i18n
-                                    [ h4 [] [ text "We are sorry" ]
-                                    , p [] [ text "There was an error while loading data." ]
-                                    , p [] [ text "If you're a technical person, you can look at your browser console to see the detailed error." ]
-                                    ]
+                            [ div [ class "alert alert-danger" ]
+                                -- TODO i18n
+                                [ h4 [] [ text "We are sorry" ]
+                                , p [] [ text "There was an error while loading data." ]
+                                , p [] [ text "If you're a technical person, you can look at your browser console to see the detailed error." ]
                                 ]
+                            ]
 
                         Success ( entities, variablesResponse ) ->
                             viewIndividuals entities variablesResponse model.individuals
@@ -311,6 +324,7 @@ view model =
                                                     -- TODO i18n
                                                     [ h4 [] [ text "We are sorry" ]
                                                     , p [] [ text "There was an error while calculating result." ]
+                                                    , p [] [ text "If you're a technical person, you can look at your browser console to see the detailed error." ]
                                                     ]
                                                 ]
 
@@ -460,6 +474,21 @@ viewIndividual entities variablesResponse index individual =
                     )
                 |> List.head
                 |> Maybe.withDefault "Individual"
+
+        viewIndividualRoles roles =
+            ul []
+                (roles
+                    |> Dict.toList
+                    |> List.filterMap
+                        (\( entityId, roleId ) ->
+                            findEntity entityId entities
+                                |> Maybe.andThen
+                                    (\entity ->
+                                        findRole roleId entity.roles
+                                            |> Maybe.map (viewIndividualRole entities index entityId entity)
+                                    )
+                        )
+                )
     in
         div [ class "panel panel-default" ]
             [ div [ class "panel-heading" ]
@@ -485,21 +514,7 @@ viewIndividual entities variablesResponse index individual =
                         )
                     ]
                 , li [ class "list-group-item" ]
-                    [ p [] [ text "Roles" ]
-                    , ul []
-                        (individual.roles
-                            |> Dict.toList
-                            |> List.filterMap
-                                (\( entityId, roleId ) ->
-                                    Dict.get entityId entities
-                                        |> Maybe.andThen
-                                            (\entity ->
-                                                findRole entity.roles roleId
-                                                    |> Maybe.map (viewIndividualRole entities index entityId entity)
-                                            )
-                                )
-                        )
-                    ]
+                    [ viewIndividualRoles individual.roles ]
                 ]
             ]
 
