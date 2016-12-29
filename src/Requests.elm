@@ -180,6 +180,12 @@ variableDecoder =
                             (field "default" int)
                             |> map (\fields -> IntVariable ( variableCommonFields, fields ))
 
+                    "String" ->
+                        map
+                            StringVariableFields
+                            (field "default" string)
+                            |> map (\fields -> StringVariable ( variableCommonFields, fields ))
+
                     _ ->
                         fail ("Unsupported type: " ++ variableCommonFields.type_)
             )

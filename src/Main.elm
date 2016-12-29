@@ -112,7 +112,7 @@ init =
     -- TODO Load baseUrl and displayDisclaimer from flags and store setting in localStorage.
     let
         baseUrl =
-            "http://localhost:2001/api"
+            "http://localhost:2000/api"
 
         newModel =
             { initialModel

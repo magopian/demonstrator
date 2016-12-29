@@ -59,9 +59,17 @@ type alias Entity =
     }
 
 
-findRole : List Role -> String -> Maybe Role
-findRole roles roleKey =
-    find (\role -> pluralOrKey role == roleKey) roles
+findEntity : String -> Dict String Entity -> Maybe Entity
+findEntity entityId entities =
+    -- A simple `Dict.get` does not the job: we want to find an entity by its "plural-or-key".
+    entities
+        |> Dict.values
+        |> find (\entity -> pluralOrKey entity == entityId)
+
+
+findRole : String -> List Role -> Maybe Role
+findRole roleId roles =
+    find (\role -> pluralOrKey role == roleId) roles
 
 
 pluralOrKey : { a | key : String, plural : String } -> String
@@ -172,12 +180,17 @@ type alias IntVariableFields =
     { default : Int }
 
 
+type alias StringVariableFields =
+    { default : String }
+
+
 type Variable
     = BoolVariable ( VariableCommonFields, BoolVariableFields )
     | DateVariable ( VariableCommonFields, DateVariableFields )
     | EnumVariable ( VariableCommonFields, EnumVariableFields )
     | FloatVariable ( VariableCommonFields, FloatVariableFields )
     | IntVariable ( VariableCommonFields, IntVariableFields )
+    | StringVariable ( VariableCommonFields, StringVariableFields )
 
 
 type alias VariablesResponse =
@@ -204,4 +217,7 @@ variableCommonFields variable =
             x
 
         (IntVariable ( x, _ )) as variable ->
+            x
+
+        (StringVariable ( x, _ )) as variable ->
             x
