@@ -258,8 +258,8 @@ subscriptions model =
 view : Model -> Html Msg
 view model =
     div []
-        ([ viewNavBar
-         , div [ class "container-fluid" ]
+        [ viewNavBar
+        , div [ class "container-fluid" ]
             ((if model.displayDisclaimer then
                 [ viewDisclaimer ]
               else
@@ -324,8 +324,8 @@ view model =
                                    )
                    )
             )
-         ]
-        )
+        , viewFooter
+        ]
 
 
 viewCalculateValue : CalculateValue -> Html Msg
@@ -362,6 +362,86 @@ viewDisclaimer =
           --     , onClick CloseDisclaimer
           --     ]
           --     [ text "J'ai compris, ne plus afficher" ]
+        ]
+
+
+viewFooter : Html msg
+viewFooter =
+    footer
+        [ style
+            [ ( "padding-top", "50px" )
+            , ( "padding-bottom", "50px" )
+            , ( "margin-top", "100px" )
+            , ( "color", "#99979c" )
+            , ( "text-align", "left" )
+            , ( "background-color", "#2a2730" )
+            ]
+        ]
+        [ div [ class "container" ]
+            [ ul
+                [ style
+                    [ ( "padding-left", "0" )
+                    , ( "margin-bottom", "20px" )
+                    ]
+                ]
+                [ li
+                    [ style [ ( "display", "inline-block" ) ] ]
+                    [ a
+                        [ href "https://www.openfisca.fr/"
+                        , style [ ( "color", "white" ) ]
+                        , target "_blank"
+                        ]
+                        [ text "Homepage"
+                          -- TODO i18n
+                        ]
+                    ]
+                , li
+                    [ style [ ( "display", "inline-block" ), ( "margin-left", "15px" ) ] ]
+                    [ a
+                        [ href "https://twitter.com/OpenFisca"
+                        , style [ ( "color", "white" ) ]
+                        , target "_blank"
+                        ]
+                        [ text "Twitter" ]
+                    ]
+                , li
+                    [ style [ ( "display", "inline-block" ), ( "margin-left", "15px" ) ] ]
+                    -- TODO Do not hardcode URL
+                    [ a
+                        [ href "https://github.com/openfisca/demonstrator"
+                        , style [ ( "color", "white" ) ]
+                        , target "_blank"
+                        ]
+                        [ text "GitHub" ]
+                    ]
+                ]
+            , p []
+                [ text "Designed and built with all the love in the world by "
+                , a [ href "https://twitter.com/mdo", target "_blank" ]
+                    [ text "@mdo" ]
+                , text " and "
+                , a [ href "https://twitter.com/fat", target "_blank" ]
+                    [ text "@fat" ]
+                , text ". Maintained by the "
+                , a [ href "https://github.com/orgs/twbs/people" ]
+                    [ text "core team" ]
+                , text " with the help of "
+                , a [ href "https://github.com/twbs/bootstrap/graphs/contributors" ]
+                    [ text "our contributors" ]
+                , text "."
+                ]
+            , p []
+                [ text "Code licensed "
+                  -- TODO Fix link
+                , a
+                    [ href "https://github.com/openfisca/demonstrator/blob/master/LICENSE"
+                    , target "_blank"
+                    , rel "license"
+                    ]
+                    -- TODO Fix license name
+                    [ text "GNU Affero GPL version 3+" ]
+                ]
+            ]
         ]
 
 
