@@ -31,6 +31,7 @@ type alias Model =
     , entitiesWebData : WebData (Dict String Entity)
     , individuals : List Individual
     , period : String
+    , simulateWebData : WebData SimulateNode
     , variablesWebData : WebData VariablesResponse
     }
 
@@ -44,7 +45,8 @@ initialModel =
     , individuals = []
     , period =
         -- TODO Add UI to set period
-        "2016"
+        "2015"
+    , simulateWebData = NotAsked
     , variablesWebData = NotAsked
     }
 
@@ -112,6 +114,7 @@ init =
     -- TODO Load baseUrl and displayDisclaimer from flags and store setting in localStorage.
     let
         baseUrl =
+            -- "https://api.openfisca.fr/api"
             "http://localhost:2000/api"
 
         newModel =
@@ -143,6 +146,7 @@ type Msg
     | EntitiesResult (WebData (Dict String Entity))
     | SetInputValue Int String InputValue
     | SetRole Int String String
+    | SimulateResult (WebData SimulateNode)
     | VariablesResult (WebData VariablesResponse)
 
 
@@ -153,6 +157,11 @@ update msg model =
             Requests.calculate model.baseUrl individuals model.period
                 |> RemoteData.sendRequest
                 |> Cmd.map CalculateResult
+
+        simulateCmd individuals =
+            Requests.simulate model.baseUrl individuals model.period
+                |> RemoteData.sendRequest
+                |> Cmd.map SimulateResult
     in
         case msg of
             CalculateResult webData ->
@@ -186,10 +195,13 @@ update msg model =
                                 webData
                                     |> RemoteData.mapError (Debug.log "model.entitiesWebData Failure")
                             , individuals = newIndividuals
+                            , simulateWebData = Loading
                         }
 
                     cmds =
-                        [ calculateCmd newIndividuals ]
+                        [ calculateCmd newIndividuals
+                        , simulateCmd newIndividuals
+                        ]
                 in
                     newModel ! cmds
 
@@ -213,10 +225,13 @@ update msg model =
                         { model
                             | calculateWebData = Loading
                             , individuals = newIndividuals
+                            , simulateWebData = Loading
                         }
 
                     cmds =
-                        [ calculateCmd newIndividuals ]
+                        [ calculateCmd newIndividuals
+                        , simulateCmd newIndividuals
+                        ]
                 in
                     newModel ! cmds
 
@@ -240,12 +255,26 @@ update msg model =
                         { model
                             | calculateWebData = Loading
                             , individuals = newIndividuals
+                            , simulateWebData = Loading
                         }
 
                     cmds =
-                        [ calculateCmd newIndividuals ]
+                        [ calculateCmd newIndividuals
+                        , simulateCmd newIndividuals
+                        ]
                 in
                     newModel ! cmds
+
+            SimulateResult webData ->
+                let
+                    newModel =
+                        { model
+                            | simulateWebData =
+                                webData
+                                    |> RemoteData.mapError (Debug.log "model.simulateWebData Failure")
+                        }
+                in
+                    ( newModel, Cmd.none )
 
             VariablesResult webData ->
                 let
@@ -305,22 +334,19 @@ view model =
                         Success ( entities, variablesResponse ) ->
                             [ div [ class "row" ]
                                 (viewIndividuals entities variablesResponse model.individuals
-                                    :: (case model.calculateWebData of
-                                            NotAsked ->
-                                                []
+                                    :: [ div [ class "col-sm-8" ]
+                                            (case RemoteData.append model.calculateWebData model.simulateWebData of
+                                                NotAsked ->
+                                                    []
 
-                                            Loading ->
-                                                [ p []
-                                                    [ text "Calculation in progress..."
-                                                      -- TODO i18n
+                                                Loading ->
+                                                    [ p []
+                                                        [ text "Calculation in progress..."
+                                                          -- TODO i18n
+                                                        ]
                                                     ]
-                                                ]
 
-                                            Failure err ->
-                                                let
-                                                    _ =
-                                                        Debug.log "Load data failure" err
-                                                in
+                                                Failure err ->
                                                     [ div [ class "alert alert-danger" ]
                                                         -- TODO i18n
                                                         [ h4 [] [ text "We are sorry" ]
@@ -329,14 +355,17 @@ view model =
                                                         ]
                                                     ]
 
-                                            Success calculateValue ->
-                                                case calculateValue of
-                                                    Nothing ->
-                                                        []
+                                                Success ( calculateValue, simulateNode ) ->
+                                                    case ( calculateValue, simulateNode ) of
+                                                        ( Just calculateValue, simulateNode ) ->
+                                                            [ viewCalculateResult calculateValue model.period variablesResponse.variables
+                                                            , viewSimulateResult simulateNode
+                                                            ]
 
-                                                    Just calculateValue ->
-                                                        [ viewCalculateValue calculateValue model.period variablesResponse.variables ]
-                                       )
+                                                        _ ->
+                                                            []
+                                            )
+                                       ]
                                 )
                             ]
                    )
@@ -345,46 +374,44 @@ view model =
         ]
 
 
-viewCalculateValue : CalculateValue -> Period -> Dict String Variable -> Html Msg
-viewCalculateValue calculateValue period variables =
-    div [ class "col-sm-8" ]
-        [ div [ class "panel panel-default" ]
-            [ div [ class "panel-heading" ]
-                [ h3 [ class "panel-title" ]
-                    [ text "Calculation results"
-                      -- TODO i18n
-                    ]
+viewCalculateResult : CalculateValue -> Period -> Dict String Variable -> Html Msg
+viewCalculateResult calculateValue period variables =
+    div [ class "panel panel-default" ]
+        [ div [ class "panel-heading" ]
+            [ h3 [ class "panel-title" ]
+                [ text "Calculation results"
+                  -- TODO i18n
                 ]
-            , div [ class "panel-body" ]
-                [ dl []
-                    (calculateValue
-                        |> Dict.toList
-                        |> List.concatMap
-                            (\( variableName, valuesByPeriod ) ->
-                                case
-                                    valuesByPeriod
-                                        |> Dict.get period
-                                        |> Maybe.andThen List.head
-                                of
-                                    Nothing ->
-                                        []
+            ]
+        , div [ class "panel-body" ]
+            [ dl []
+                (calculateValue
+                    |> Dict.toList
+                    |> List.concatMap
+                        (\( variableName, valuesByPeriod ) ->
+                            case
+                                valuesByPeriod
+                                    |> Dict.get period
+                                    |> Maybe.andThen List.head
+                            of
+                                Nothing ->
+                                    []
 
-                                    Just value ->
-                                        let
-                                            label =
-                                                variableLabel variables variableName
-                                        in
-                                            [ dt
-                                                [ title label
-                                                  -- dt can be truncated by Bootstrap so allow user to hover
-                                                ]
-                                                [ text label ]
-                                            , dd []
-                                                [ samp [] [ text (toString value) ] ]
+                                Just value ->
+                                    let
+                                        label =
+                                            variableLabel variables variableName
+                                    in
+                                        [ dt
+                                            [ title label
+                                              -- dt can be truncated by Bootstrap so allow user to hover
                                             ]
-                            )
-                    )
-                ]
+                                            [ text label ]
+                                        , dd []
+                                            [ samp [] [ text (toString value) ] ]
+                                        ]
+                        )
+                )
             ]
         ]
 
@@ -517,7 +544,7 @@ viewIndividual entities variablesResponse index individual =
                     Maybe.withDefault "Individual"
 
         viewIndividualRoles roles =
-            ul [ class "list-unstyled" ]
+            div []
                 (roles
                     |> Dict.toList
                     |> List.filterMap
@@ -559,26 +586,23 @@ viewIndividual entities variablesResponse index individual =
 
 viewIndividualRole : Dict String Entity -> Int -> String -> Entity -> Role -> Html Msg
 viewIndividualRole entities index entityId entity role =
-    li []
-        [ label []
-            [ text entity.label
-            , text " "
-              -- TODO Use CSS
-            , select
-                [ on "change"
-                    (targetValue |> Decode.map (SetRole index entityId))
-                ]
-                (entity.roles
-                    |> List.map
-                        (\role1 ->
-                            option
-                                [ selected (role1.key == role.key)
-                                , value (pluralOrKey role1)
-                                ]
-                                [ text role1.label ]
-                        )
-                )
+    div [ class "form-group" ]
+        [ label [] [ text entity.label ]
+        , select
+            [ class "form-control"
+            , on "change"
+                (targetValue |> Decode.map (SetRole index entityId))
             ]
+            (entity.roles
+                |> List.map
+                    (\role1 ->
+                        option
+                            [ selected (role1.key == role.key)
+                            , value (pluralOrKey role1)
+                            ]
+                            [ text role1.label ]
+                    )
+            )
         ]
 
 
@@ -593,11 +617,15 @@ viewIndividuals entities variablesResponse individuals =
 viewInputValue : Int -> VariableName -> String -> InputValue -> Html Msg
 viewInputValue index variableName variableLabel inputValue =
     div [ class "form-group" ]
-        [ label
-            [ title variableLabel
-              -- Let the user hover for the full label
-            ]
-            [ text (String.left 15 variableLabel) ]
+        [ let
+            truncatedLabel =
+                String.left 25 variableLabel
+          in
+            label
+                [ title variableLabel
+                  -- Let the user hover the truncated label to see the full label
+                ]
+                [ text (truncatedLabel ++ "...") ]
         , case inputValue of
             BoolInputValue bool ->
                 text "TODO"
@@ -615,12 +643,15 @@ viewInputValue index variableName variableLabel inputValue =
                         (\str ->
                             let
                                 newInputValue =
-                                    case String.toFloat str of
-                                        Ok newFloat ->
-                                            FloatInputValue newFloat
+                                    if String.isEmpty str then
+                                        FloatInputValue 0
+                                    else
+                                        case String.toFloat str of
+                                            Ok newFloat ->
+                                                FloatInputValue newFloat
 
-                                        Err _ ->
-                                            FloatInputValue float
+                                            Err _ ->
+                                                FloatInputValue float
                             in
                                 SetInputValue index variableName newInputValue
                         )
@@ -637,12 +668,15 @@ viewInputValue index variableName variableLabel inputValue =
                         (\str ->
                             let
                                 newInputValue =
-                                    case String.toInt str of
-                                        Ok newInt ->
-                                            IntInputValue newInt
+                                    if String.isEmpty str then
+                                        IntInputValue 0
+                                    else
+                                        case String.toInt str of
+                                            Ok newInt ->
+                                                IntInputValue newInt
 
-                                        Err _ ->
-                                            IntInputValue int
+                                            Err _ ->
+                                                IntInputValue int
                             in
                                 SetInputValue index variableName newInputValue
                         )
@@ -724,3 +758,43 @@ viewNavBar =
                 ]
             ]
         ]
+
+
+viewSimulateResult : SimulateNode -> Html Msg
+viewSimulateResult (SimulateNode fields) =
+    let
+        viewFields : SimulateNodeFields -> Html Msg
+        viewFields fields =
+            div []
+                ([ text fields.name
+                 , text " "
+                 ]
+                    ++ (case List.head fields.values of
+                            Nothing ->
+                                []
+
+                            Just value ->
+                                [ samp [] [ text (toString value) ] ]
+                       )
+                    ++ (if List.isEmpty fields.children then
+                            []
+                        else
+                            [ div [ style [ ( "margin-left", "1em" ) ] ]
+                                (fields.children
+                                    |> List.map (\(SimulateNode fields) -> viewFields fields)
+                                )
+                            ]
+                       )
+                )
+    in
+        div [ class "panel panel-default" ]
+            [ div [ class "panel-heading" ]
+                [ h3 [ class "panel-title" ]
+                    [ text "Calculation results"
+                      -- TODO i18n
+                    ]
+                ]
+            , div [ class "panel-body" ]
+                [ viewFields fields
+                ]
+            ]

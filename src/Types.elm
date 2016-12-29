@@ -128,15 +128,37 @@ groupEntities individuals =
 
 
 
--- CALCULATE
+-- PERIODS
 
 
 type alias Period =
     String
 
 
+
+-- CALCULATE
+
+
 type alias CalculateValue =
     Dict VariableName (Dict Period (List Float))
+
+
+
+-- SIMULATE
+
+
+type SimulateNode
+    = SimulateNode SimulateNodeFields
+
+
+type alias SimulateNodeFields =
+    { children : List SimulateNode
+    , code : String
+    , color : ( Int, Int, Int )
+    , name : String
+    , shortName : String
+    , values : List Float
+    }
 
 
 

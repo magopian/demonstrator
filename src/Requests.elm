@@ -136,6 +136,30 @@ roleDecoder =
         |: (field "subroles" (list string) |> withDefault [])
 
 
+simulateNodeDecoder : Decoder SimulateNode
+simulateNodeDecoder =
+    succeed SimulateNodeFields
+        |: (field "children" (list (lazy (\_ -> simulateNodeDecoder))) |> withDefault [])
+        |: (field "code" string)
+        |: (field "color"
+                (list int
+                    |> andThen
+                        (\xs ->
+                            case xs of
+                                [ a, b, c ] ->
+                                    succeed ( a, b, c )
+
+                                _ ->
+                                    fail "color should be a list of 3 integers"
+                        )
+                )
+           )
+        |: (field "name" string)
+        |: (field "short_name" string)
+        |: (field "values" (list float))
+        |> map SimulateNode
+
+
 variableCommonFieldsDecoder : Decoder VariableCommonFields
 variableCommonFieldsDecoder =
     succeed VariableCommonFields
@@ -229,9 +253,13 @@ calculate baseUrl individuals period =
                             ]
                         ]
                   )
-                , ( "variables", Encode.list [ Encode.string "revenu_disponible" ] )
-                , -- TODO parametrize
-                  ( "output_format", Encode.string "variables" )
+                , ( "variables"
+                  , Encode.list
+                        [ Encode.string "revenu_disponible"
+                          -- TODO parametrize
+                        ]
+                  )
+                , ( "output_format", Encode.string "variables" )
                 ]
                 |> Http.jsonBody
     in
@@ -245,6 +273,27 @@ calculate baseUrl individuals period =
 entities : String -> Http.Request (Dict String Entity)
 entities baseUrl =
     Http.get (baseUrl ++ "/2/entities") (field "entities" (dict entityDecoder))
+
+
+simulate : String -> List Individual -> Period -> Http.Request SimulateNode
+simulate baseUrl individuals period =
+    let
+        body =
+            Encode.object
+                [ ( "scenarios"
+                  , Encode.list
+                        [ Encode.object
+                            [ ( "test_case", encodeTestCase individuals )
+                            , ( "period", Encode.string period )
+                            ]
+                        ]
+                  )
+                ]
+                |> Http.jsonBody
+    in
+        Http.post (baseUrl ++ "/1/simulate")
+            body
+            (field "value" simulateNodeDecoder)
 
 
 variables : String -> Http.Request VariablesResponse
