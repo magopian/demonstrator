@@ -25,34 +25,84 @@ main =
 
 
 type alias Model =
-    { displayDisclaimer : Bool
+    { baseUrl : String
+    , calculateWebData : WebData (Maybe CalculateValue)
+    , displayDisclaimer : Bool
     , entitiesWebData : WebData (Dict String Entity)
     , individuals : List Individual
+    , period : String
     , variablesWebData : WebData VariablesResponse
     }
 
 
 initialModel : Model
 initialModel =
-    { displayDisclaimer = True
+    { baseUrl = ""
+    , calculateWebData = NotAsked
+    , displayDisclaimer = True
     , entitiesWebData = NotAsked
     , individuals = []
+    , period =
+        -- TODO Add UI to set period
+        "2016"
     , variablesWebData = NotAsked
     }
 
 
-initialRoles : Dict String Entity -> Dict String String
-initialRoles entities =
+initialIndividuals : Dict String Entity -> List Individual
+initialIndividuals entities =
+    let
+        salaireVariableName =
+            -- TODO Do not hardcode
+            "salaire_de_base"
+
+        initialSalaire =
+            ( salaireVariableName, FloatInputValue 0 )
+
+        firstOrSecondRole : List Role -> Maybe Role
+        firstOrSecondRole roles =
+            roles
+                |> List.head
+                |> Maybe.andThen
+                    (\firstRole ->
+                        let
+                            secondRole =
+                                roles
+                                    |> List.drop 1
+                                    |> List.head
+                        in
+                            case firstRole.max of
+                                Nothing ->
+                                    Just firstRole
+
+                                Just firstRoleMax ->
+                                    if firstRoleMax > 1 then
+                                        Just firstRole
+                                    else
+                                        secondRole
+                    )
+    in
+        [ { inputValues = Dict.fromList [ initialSalaire ]
+          , roles = initialRoles entities List.head
+          }
+        , { inputValues = Dict.fromList [ initialSalaire ]
+          , roles = initialRoles entities firstOrSecondRole
+          }
+        ]
+
+
+initialRoles : Dict String Entity -> (List Role -> Maybe Role) -> Dict String String
+initialRoles entities getter =
     entities
-        |> Dict.toList
+        |> Dict.values
         |> List.filterMap
-            (\( key, entity ) ->
+            (\entity ->
                 if entity.isPersonsEntity then
                     Nothing
                 else
                     entity.roles
-                        |> List.head
-                        |> Maybe.map (\firstRole -> ( key, pluralOrKey firstRole ))
+                        |> getter
+                        |> Maybe.map (\firstRole -> ( pluralOrKey entity, pluralOrKey firstRole ))
             )
         |> Dict.fromList
 
@@ -65,7 +115,10 @@ init =
             "http://localhost:2001/api"
 
         newModel =
-            { initialModel | variablesWebData = Loading }
+            { initialModel
+                | baseUrl = baseUrl
+                , variablesWebData = Loading
+            }
 
         entitiesCmd =
             Requests.entities baseUrl
@@ -85,7 +138,8 @@ init =
 
 
 type Msg
-    = CloseDisclaimer
+    = CalculateResult (WebData (Maybe CalculateValue))
+    | CloseDisclaimer
     | EntitiesResult (WebData (Dict String Entity))
     | SetInputValue Int String InputValue
     | SetRole Int String String
@@ -94,82 +148,98 @@ type Msg
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
-    case msg of
-        CloseDisclaimer ->
-            ( model, Cmd.none )
+    let
+        calculateCmd individuals =
+            Requests.calculate model.baseUrl individuals model.period
+                |> RemoteData.sendRequest
+                |> Cmd.map CalculateResult
+    in
+        case msg of
+            CalculateResult webData ->
+                let
+                    newModel =
+                        { model | calculateWebData = webData }
+                in
+                    ( newModel, Cmd.none )
 
-        EntitiesResult webData ->
-            let
-                newIndividuals =
-                    case webData of
-                        Success entities ->
-                            [ { inputValues =
-                                    Dict.fromList
-                                        [ ( "salaire_de_base", FloatInputValue 0 )
-                                        ]
-                              , roles = initialRoles entities
-                              }
-                            ]
+            CloseDisclaimer ->
+                ( model, Cmd.none )
 
-                        _ ->
-                            []
+            EntitiesResult webData ->
+                let
+                    newIndividuals =
+                        case webData of
+                            Success entities ->
+                                initialIndividuals entities
 
-                newModel =
-                    { model
-                        | entitiesWebData = webData
-                        , individuals = newIndividuals
-                    }
-            in
-                ( newModel, Cmd.none )
+                            _ ->
+                                []
 
-        SetInputValue index name inputValue ->
-            let
-                newIndividuals =
-                    model.individuals
-                        |> List.indexedMap
-                            (\index1 individual ->
-                                if index == index1 then
-                                    let
-                                        newInputValues =
-                                            Dict.insert name inputValue individual.inputValues
-                                    in
-                                        { individual | inputValues = newInputValues }
-                                else
-                                    individual
-                            )
+                    newModel =
+                        { model
+                            | entitiesWebData = webData
+                            , individuals = newIndividuals
+                        }
 
-                newModel =
-                    { model | individuals = newIndividuals }
-            in
-                ( newModel, Cmd.none )
+                    cmds =
+                        [ calculateCmd newIndividuals ]
+                in
+                    newModel ! cmds
 
-        SetRole index entityKey roleKey ->
-            let
-                newIndividuals =
-                    model.individuals
-                        |> List.indexedMap
-                            (\index1 individual ->
-                                if index == index1 then
-                                    let
-                                        newRoles =
-                                            Dict.insert entityKey roleKey individual.roles
-                                    in
-                                        { individual | roles = newRoles }
-                                else
-                                    individual
-                            )
+            SetInputValue index variableName inputValue ->
+                let
+                    newIndividuals =
+                        model.individuals
+                            |> List.indexedMap
+                                (\index1 individual ->
+                                    if index == index1 then
+                                        let
+                                            newInputValues =
+                                                Dict.insert variableName inputValue individual.inputValues
+                                        in
+                                            { individual | inputValues = newInputValues }
+                                    else
+                                        individual
+                                )
 
-                newModel =
-                    { model | individuals = newIndividuals }
-            in
-                ( newModel, Cmd.none )
+                    newModel =
+                        { model | individuals = newIndividuals }
 
-        VariablesResult webData ->
-            let
-                newModel =
-                    { model | variablesWebData = webData }
-            in
-                ( newModel, Cmd.none )
+                    cmds =
+                        [ calculateCmd newIndividuals ]
+                in
+                    newModel ! cmds
+
+            SetRole index entityId roleId ->
+                let
+                    newIndividuals =
+                        model.individuals
+                            |> List.indexedMap
+                                (\index1 individual ->
+                                    if index == index1 then
+                                        let
+                                            newRoles =
+                                                Dict.insert entityId roleId individual.roles
+                                        in
+                                            { individual | roles = newRoles }
+                                    else
+                                        individual
+                                )
+
+                    newModel =
+                        { model | individuals = newIndividuals }
+
+                    cmds =
+                        [ calculateCmd newIndividuals ]
+                in
+                    newModel ! cmds
+
+            VariablesResult webData ->
+                let
+                    newModel =
+                        { model | variablesWebData = webData }
+                in
+                    ( newModel, Cmd.none )
 
 
 
@@ -200,7 +270,11 @@ view model =
                             []
 
                         Loading ->
-                            [ p [] [ text "Loading data..." ] ]
+                            [ p []
+                                [ text "Loading data..."
+                                  -- TODO i18n
+                                ]
+                            ]
 
                         Failure err ->
                             let
@@ -208,17 +282,58 @@ view model =
                                     Debug.log "Load data failure" err
                             in
                                 [ div [ class "alert alert-danger" ]
+                                    -- TODO i18n
                                     [ h4 [] [ text "We are sorry" ]
                                     , p [] [ text "There was an error while loading data." ]
+                                    , p [] [ text "If you're a technical person, you can look at your browser console to see the detailed error." ]
                                     ]
                                 ]
 
                         Success ( entities, variablesResponse ) ->
-                            [ viewIndividuals entities variablesResponse model.individuals ]
+                            viewIndividuals entities variablesResponse model.individuals
+                                :: (case model.calculateWebData of
+                                        NotAsked ->
+                                            []
+
+                                        Loading ->
+                                            [ p []
+                                                [ text "Calculation in progress..."
+                                                  -- TODO i18n
+                                                ]
+                                            ]
+
+                                        Failure err ->
+                                            let
+                                                _ =
+                                                    Debug.log "Load data failure" err
+                                            in
+                                                [ div [ class "alert alert-danger" ]
+                                                    -- TODO i18n
+                                                    [ h4 [] [ text "We are sorry" ]
+                                                    , p [] [ text "There was an error while calculating result." ]
+                                                    ]
+                                                ]
+
+                                        Success calculateValue ->
+                                            case calculateValue of
+                                                Nothing ->
+                                                    []
+
+                                                Just calculateValue ->
+                                                    [ viewCalculateValue calculateValue ]
+                                   )
                    )
             )
          ]
         )
+
+
+viewCalculateValue : CalculateValue -> Html Msg
+viewCalculateValue calculateValue =
+    div []
+        [ text "TODO viewCalculateValue"
+        , pre [] [ text (toString calculateValue) ]
+        ]
 
 
 viewDisclaimer : Html Msg
@@ -277,15 +392,15 @@ viewIndividual entities variablesResponse index individual =
                         (individual.inputValues
                             |> Dict.toList
                             |> List.map
-                                (\( name, inputValue ) ->
+                                (\( variableName, inputValue ) ->
                                     let
                                         label =
                                             variablesResponse.variables
-                                                |> Dict.get name
+                                                |> Dict.get variableName
                                                 |> Maybe.andThen (variableCommonFields >> .label)
-                                                |> Maybe.withDefault name
+                                                |> Maybe.withDefault variableName
                                     in
-                                        viewInputValue index name label inputValue
+                                        viewInputValue index variableName label inputValue
                                 )
                         )
                     ]
@@ -295,12 +410,12 @@ viewIndividual entities variablesResponse index individual =
                         (individual.roles
                             |> Dict.toList
                             |> List.filterMap
-                                (\( entityKey, roleKey ) ->
-                                    Dict.get entityKey entities
+                                (\( entityId, roleId ) ->
+                                    Dict.get entityId entities
                                         |> Maybe.andThen
                                             (\entity ->
-                                                findRole entity.roles roleKey
-                                                    |> Maybe.map (viewIndividualRole entities index entityKey entity)
+                                                findRole entity.roles roleId
+                                                    |> Maybe.map (viewIndividualRole entities index entityId entity)
                                             )
                                 )
                         )
@@ -310,7 +425,7 @@ viewIndividual entities variablesResponse index individual =
 
 
 viewIndividualRole : Dict String Entity -> Int -> String -> Entity -> Role -> Html Msg
-viewIndividualRole entities index entityKey entity role =
+viewIndividualRole entities index entityId entity role =
     li []
         [ label []
             [ text entity.label
@@ -318,7 +433,7 @@ viewIndividualRole entities index entityKey entity role =
               -- TODO Use CSS
             , select
                 [ on "change"
-                    (targetValue |> Decode.map (SetRole index entityKey))
+                    (targetValue |> Decode.map (SetRole index entityId))
                 ]
                 (entity.roles
                     |> List.map
@@ -342,8 +457,8 @@ viewIndividuals entities variablesResponse individuals =
         )
 
 
-viewInputValue : Int -> String -> String -> InputValue -> Html Msg
-viewInputValue index name label inputValue =
+viewInputValue : Int -> VariableName -> String -> InputValue -> Html Msg
+viewInputValue index variableName label inputValue =
     div [ class "form-group" ]
         [ Html.label [ class "col-sm-2 control-label" ]
             [ text label ]
@@ -372,7 +487,7 @@ viewInputValue index name label inputValue =
                                             Err _ ->
                                                 FloatInputValue float
                                 in
-                                    SetInputValue index name newInputValue
+                                    SetInputValue index variableName newInputValue
                             )
                         , step "any"
                         , type_ "number"
@@ -394,7 +509,7 @@ viewInputValue index name label inputValue =
                                             Err _ ->
                                                 IntInputValue int
                                 in
-                                    SetInputValue index name newInputValue
+                                    SetInputValue index variableName newInputValue
                             )
                         , step "1"
                         , type_ "number"

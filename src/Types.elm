@@ -1,6 +1,7 @@
 module Types exposing (..)
 
 import Dict exposing (Dict)
+import List.Extra exposing (..)
 
 
 -- HELPERS
@@ -18,7 +19,7 @@ find f xs =
 
 
 type alias Individual =
-    { inputValues : Dict String InputValue
+    { inputValues : Dict VariableName InputValue
     , roles : Dict String String
     }
 
@@ -31,6 +32,11 @@ type InputValue
     | IntInputValue Int
 
 
+individualId : Int -> String
+individualId index =
+    "individual_" ++ (toString (index + 1))
+
+
 
 -- ENTITIES
 
@@ -38,6 +44,7 @@ type InputValue
 type alias Role =
     { key : String
     , label : String
+    , max : Maybe Int
     , plural : String
     , subroles : List String
     }
@@ -45,43 +52,97 @@ type alias Role =
 
 type alias Entity =
     { isPersonsEntity : Bool
+    , key : String
     , label : String
+    , plural : String
     , roles : List Role
     }
 
 
 findRole : List Role -> String -> Maybe Role
 findRole roles roleKey =
-    find
-        (\{ key, plural } ->
-            let
-                pluralOrKey =
-                    if String.isEmpty plural then
-                        key
-                    else
-                        plural
-            in
-                pluralOrKey == roleKey
-        )
-        roles
+    find (\role -> pluralOrKey role == roleKey) roles
 
 
-pluralOrKey : Role -> String
-pluralOrKey role =
-    if String.isEmpty role.plural then
-        role.key
+pluralOrKey : { a | key : String, plural : String } -> String
+pluralOrKey record =
+    if String.isEmpty record.plural then
+        record.key
     else
-        role.plural
+        record.plural
+
+
+
+-- GROUP ENTITIES (sub-part of a test case)
+
+
+type alias GroupEntity =
+    Dict String (List String)
+
+
+groupEntities : List Individual -> Maybe (Dict String GroupEntity)
+groupEntities individuals =
+    let
+        mergeTestCases : Dict String GroupEntity -> Dict String GroupEntity -> Dict String GroupEntity
+        mergeTestCases testCase1 testCase2 =
+            Dict.merge
+                Dict.insert
+                (\entityId roles1 roles2 individualAccu ->
+                    individualAccu |> Dict.insert entityId (mergeEntities roles1 roles2)
+                )
+                Dict.insert
+                testCase1
+                testCase2
+                Dict.empty
+
+        mergeEntities : Dict String (List String) -> Dict String (List String) -> Dict String (List String)
+        mergeEntities entities1 entities2 =
+            Dict.merge
+                Dict.insert
+                (\roleId individualIds1 individualIds2 entityAccu ->
+                    entityAccu |> Dict.insert roleId (individualIds1 ++ individualIds2)
+                )
+                Dict.insert
+                entities1
+                entities2
+                Dict.empty
+    in
+        individuals
+            |> List.indexedMap
+                (\index { roles } ->
+                    roles
+                        |> Dict.map
+                            (\entityId roleId ->
+                                Dict.singleton roleId [ individualId index ]
+                            )
+                )
+            |> foldl1 mergeTestCases
+
+
+
+-- CALCULATE
+
+
+type alias Period =
+    String
+
+
+type alias CalculateValue =
+    Dict VariableName (Dict Period (List Float))
 
 
 
 -- VARIABLES
 
 
+type alias VariableName =
+    String
+
+
 type alias VariableCommonFields =
     { entity : String
     , label : Maybe String
-    , name : String
+    , name : VariableName
     , sourceCode : String
     , sourceFilePath : String
     , startLineNumber : Int
