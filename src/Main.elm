@@ -303,50 +303,89 @@ view model =
                             ]
 
                         Success ( entities, variablesResponse ) ->
-                            viewIndividuals entities variablesResponse model.individuals
-                                :: (case model.calculateWebData of
-                                        NotAsked ->
-                                            []
+                            [ div [ class "row" ]
+                                (viewIndividuals entities variablesResponse model.individuals
+                                    :: (case model.calculateWebData of
+                                            NotAsked ->
+                                                []
 
-                                        Loading ->
-                                            [ p []
-                                                [ text "Calculation in progress..."
-                                                  -- TODO i18n
-                                                ]
-                                            ]
-
-                                        Failure err ->
-                                            let
-                                                _ =
-                                                    Debug.log "Load data failure" err
-                                            in
-                                                [ div [ class "alert alert-danger" ]
-                                                    -- TODO i18n
-                                                    [ h4 [] [ text "We are sorry" ]
-                                                    , p [] [ text "There was an error while calculating result." ]
-                                                    , p [] [ text "If you're a technical person, you can look at your browser console to see the detailed error." ]
+                                            Loading ->
+                                                [ p []
+                                                    [ text "Calculation in progress..."
+                                                      -- TODO i18n
                                                     ]
                                                 ]
 
-                                        Success calculateValue ->
-                                            case calculateValue of
-                                                Nothing ->
-                                                    []
+                                            Failure err ->
+                                                let
+                                                    _ =
+                                                        Debug.log "Load data failure" err
+                                                in
+                                                    [ div [ class "alert alert-danger" ]
+                                                        -- TODO i18n
+                                                        [ h4 [] [ text "We are sorry" ]
+                                                        , p [] [ text "There was an error while calculating result." ]
+                                                        , p [] [ text "If you're a technical person, you can look at your browser console to see the detailed error." ]
+                                                        ]
+                                                    ]
 
-                                                Just calculateValue ->
-                                                    [ viewCalculateValue calculateValue ]
-                                   )
+                                            Success calculateValue ->
+                                                case calculateValue of
+                                                    Nothing ->
+                                                        []
+
+                                                    Just calculateValue ->
+                                                        [ viewCalculateValue calculateValue model.period variablesResponse.variables ]
+                                       )
+                                )
+                            ]
                    )
             )
         , viewFooter
         ]
 
 
-viewCalculateValue : CalculateValue -> Html Msg
-viewCalculateValue calculateValue =
-    div []
-        [ text "TODO viewCalculateValue"
-        , pre [] [ text (toString calculateValue) ]
+viewCalculateValue : CalculateValue -> Period -> Dict String Variable -> Html Msg
+viewCalculateValue calculateValue period variables =
+    div [ class "col-sm-8" ]
+        [ div [ class "panel panel-default" ]
+            [ div [ class "panel-heading" ]
+                [ h3 [ class "panel-title" ]
+                    [ text "Calculation results"
+                      -- TODO i18n
+                    ]
+                ]
+            , div [ class "panel-body" ]
+                [ dl []
+                    (calculateValue
+                        |> Dict.toList
+                        |> List.concatMap
+                            (\( variableName, valuesByPeriod ) ->
+                                case
+                                    valuesByPeriod
+                                        |> Dict.get period
+                                        |> Maybe.andThen List.head
+                                of
+                                    Nothing ->
+                                        []
+
+                                    Just value ->
+                                        let
+                                            label =
+                                                variableLabel variables variableName
+                                        in
+                                            [ dt
+                                                [ title label
+                                                  -- dt can be truncated by Bootstrap so allow user to hover
+                                                ]
+                                                [ text label ]
+                                            , dd []
+                                                [ samp [] [ text (toString value) ] ]
+                                            ]
+                            )
+                    )
+                ]
+            ]
         ]
 
 
@@ -473,10 +512,12 @@ viewIndividual entities variablesResponse index individual =
                             Nothing
                     )
                 |> List.head
-                |> Maybe.withDefault "Individual"
+                -- TODO i18n
+                |>
+                    Maybe.withDefault "Individual"
 
         viewIndividualRoles roles =
-            ul []
+            ul [ class "list-unstyled" ]
                 (roles
                     |> Dict.toList
                     |> List.filterMap
@@ -497,17 +538,14 @@ viewIndividual entities variablesResponse index individual =
                 ]
             , ul [ class "list-group" ]
                 [ li [ class "list-group-item" ]
-                    [ div [ class "form-horizontal" ]
+                    [ div []
                         (individual.inputValues
                             |> Dict.toList
                             |> List.map
                                 (\( variableName, inputValue ) ->
                                     let
                                         label =
-                                            variablesResponse.variables
-                                                |> Dict.get variableName
-                                                |> Maybe.andThen (variableCommonFields >> .label)
-                                                |> Maybe.withDefault variableName
+                                            variableLabel variablesResponse.variables variableName
                                     in
                                         viewInputValue index variableName label inputValue
                                 )
@@ -546,72 +584,73 @@ viewIndividualRole entities index entityId entity role =
 
 viewIndividuals : Dict String Entity -> VariablesResponse -> List Individual -> Html Msg
 viewIndividuals entities variablesResponse individuals =
-    div []
+    div [ class "col-sm-4" ]
         (individuals
             |> List.indexedMap (viewIndividual entities variablesResponse)
         )
 
 
 viewInputValue : Int -> VariableName -> String -> InputValue -> Html Msg
-viewInputValue index variableName label inputValue =
+viewInputValue index variableName variableLabel inputValue =
     div [ class "form-group" ]
-        [ Html.label [ class "col-sm-2 control-label" ]
-            [ text label ]
-        , div [ class "col-sm-10" ]
-            [ case inputValue of
-                BoolInputValue bool ->
-                    text "TODO"
-
-                DateInputValue string ->
-                    text "TODO"
-
-                EnumInputValue string ->
-                    text "TODO"
-
-                FloatInputValue float ->
-                    input
-                        [ class "form-control"
-                        , onInput
-                            (\str ->
-                                let
-                                    newInputValue =
-                                        case String.toFloat str of
-                                            Ok newFloat ->
-                                                FloatInputValue newFloat
-
-                                            Err _ ->
-                                                FloatInputValue float
-                                in
-                                    SetInputValue index variableName newInputValue
-                            )
-                        , step "any"
-                        , type_ "number"
-                        , value (toString float)
-                        ]
-                        []
-
-                IntInputValue int ->
-                    input
-                        [ class "form-control"
-                        , onInput
-                            (\str ->
-                                let
-                                    newInputValue =
-                                        case String.toInt str of
-                                            Ok newInt ->
-                                                IntInputValue newInt
-
-                                            Err _ ->
-                                                IntInputValue int
-                                in
-                                    SetInputValue index variableName newInputValue
-                            )
-                        , step "1"
-                        , type_ "number"
-                        , value (toString int)
-                        ]
-                        []
+        [ label
+            [ title variableLabel
+              -- Let the user hover for the full label
             ]
+            [ text (String.left 15 variableLabel) ]
+        , case inputValue of
+            BoolInputValue bool ->
+                text "TODO"
+
+            DateInputValue string ->
+                text "TODO"
+
+            EnumInputValue string ->
+                text "TODO"
+
+            FloatInputValue float ->
+                input
+                    [ class "form-control"
+                    , onInput
+                        (\str ->
+                            let
+                                newInputValue =
+                                    case String.toFloat str of
+                                        Ok newFloat ->
+                                            FloatInputValue newFloat
+
+                                        Err _ ->
+                                            FloatInputValue float
+                            in
+                                SetInputValue index variableName newInputValue
+                        )
+                    , step "any"
+                    , type_ "number"
+                    , value (toString float)
+                    ]
+                    []
+
+            IntInputValue int ->
+                input
+                    [ class "form-control"
+                    , onInput
+                        (\str ->
+                            let
+                                newInputValue =
+                                    case String.toInt str of
+                                        Ok newInt ->
+                                            IntInputValue newInt
+
+                                        Err _ ->
+                                            IntInputValue int
+                            in
+                                SetInputValue index variableName newInputValue
+                        )
+                    , step "1"
+                    , type_ "number"
+                    , value (toString int)
+                    ]
+                    []
         ]
 
 

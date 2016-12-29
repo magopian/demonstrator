@@ -221,3 +221,11 @@ variableCommonFields variable =
 
         (StringVariable ( x, _ )) as variable ->
             x
+
+
+variableLabel : Dict String Variable -> String -> String
+variableLabel variables variableName =
+    variables
+        |> Dict.get variableName
+        |> Maybe.andThen (variableCommonFields >> .label)
+        |> Maybe.withDefault variableName
