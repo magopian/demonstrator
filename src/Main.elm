@@ -1,4 +1,4 @@
-module Main exposing (..)
+port module Main exposing (..)
 
 import Dict exposing (Dict)
 import Html exposing (..)
@@ -18,6 +18,67 @@ main =
         , update = update
         , subscriptions = subscriptions
         }
+
+
+
+-- HELPERS
+
+
+firstNonZeroValue : List Float -> Maybe Float
+firstNonZeroValue =
+    List.head
+        >> Maybe.andThen
+            (\firstValue ->
+                if firstValue == 0 then
+                    Nothing
+                else
+                    Just firstValue
+            )
+
+
+
+-- PORTS
+
+
+type alias WaterfallDataItem =
+    { isSubtotal : Bool
+    , name : String
+    , value : Float
+    }
+
+
+type alias WaterfallOptions =
+    { data : List WaterfallDataItem
+    , yMin : Float
+    , yMax : Float
+    , xLabel : String
+    , yLabel : String
+    }
+
+
+waterfallData : SimulateNode -> List WaterfallDataItem
+waterfallData (SimulateNode fields) =
+    case firstNonZeroValue fields.values of
+        Nothing ->
+            []
+
+        Just value ->
+            if List.isEmpty fields.children then
+                [ { isSubtotal = False
+                  , name = fields.shortName
+                  , value = value
+                  }
+                ]
+            else
+                (List.concatMap waterfallData fields.children)
+                    ++ [ { isSubtotal = True
+                         , name = fields.shortName
+                         , value = value
+                         }
+                       ]
+
+
+port renderWaterfall : WaterfallOptions -> Cmd msg
 
 
 
@@ -273,8 +334,28 @@ update msg model =
                                 webData
                                     |> RemoteData.mapError (Debug.log "model.simulateWebData Failure")
                         }
+
+                    renderWaterfallCmd =
+                        case webData of
+                            Success simulateNode ->
+                                let
+                                    data =
+                                        waterfallData simulateNode
+                                in
+                                    renderWaterfall
+                                        { data = data
+                                        , yMin = data |> List.map .value |> List.minimum |> Maybe.withDefault 0
+                                        , yMax = data |> List.map .value |> List.maximum |> Maybe.withDefault 0
+                                        , xLabel = ""
+                                        , yLabel =
+                                            "€"
+                                            -- TODO Do not hardcode
+                                        }
+
+                            _ ->
+                                Cmd.none
                 in
-                    ( newModel, Cmd.none )
+                    ( newModel, renderWaterfallCmd )
 
             VariablesResult webData ->
                 let
@@ -359,7 +440,8 @@ view model =
                                                     case ( calculateValue, simulateNode ) of
                                                         ( Just calculateValue, simulateNode ) ->
                                                             [ viewCalculateResult calculateValue model.period variablesResponse.variables
-                                                            , viewSimulateResult simulateNode
+                                                            , viewDecomposition simulateNode
+                                                            , div [ id "waterfall" ] []
                                                             ]
 
                                                         _ ->
@@ -414,6 +496,45 @@ viewCalculateResult calculateValue period variables =
                 )
             ]
         ]
+
+
+viewDecomposition : SimulateNode -> Html Msg
+viewDecomposition (SimulateNode fields) =
+    let
+        viewFields : SimulateNodeFields -> Html Msg
+        viewFields fields =
+            div []
+                (case firstNonZeroValue fields.values of
+                    Nothing ->
+                        []
+
+                    Just value ->
+                        [ text fields.name
+                        , text " "
+                        , samp [] [ text (toString value) ]
+                        ]
+                            ++ (if List.isEmpty fields.children then
+                                    []
+                                else
+                                    [ div [ style [ ( "margin-left", "1em" ) ] ]
+                                        (fields.children
+                                            |> List.map (\(SimulateNode fields) -> viewFields fields)
+                                        )
+                                    ]
+                               )
+                )
+    in
+        div [ class "panel panel-default" ]
+            [ div [ class "panel-heading" ]
+                [ h3 [ class "panel-title" ]
+                    [ text "Decomposition of household income"
+                      -- TODO i18n
+                    ]
+                ]
+            , div [ class "panel-body" ]
+                [ viewFields fields
+                ]
+            ]
 
 
 viewDisclaimer : Html Msg
@@ -471,7 +592,7 @@ viewFooter =
                         , style [ ( "color", "white" ) ]
                         , target "_blank"
                         ]
-                        [ text "Homepage"
+                        [ text "Home"
                           -- TODO i18n
                         ]
                     ]
@@ -758,43 +879,3 @@ viewNavBar =
                 ]
             ]
         ]
-
-
-viewSimulateResult : SimulateNode -> Html Msg
-viewSimulateResult (SimulateNode fields) =
-    let
-        viewFields : SimulateNodeFields -> Html Msg
-        viewFields fields =
-            div []
-                ([ text fields.name
-                 , text " "
-                 ]
-                    ++ (case List.head fields.values of
-                            Nothing ->
-                                []
-
-                            Just value ->
-                                [ samp [] [ text (toString value) ] ]
-                       )
-                    ++ (if List.isEmpty fields.children then
-                            []
-                        else
-                            [ div [ style [ ( "margin-left", "1em" ) ] ]
-                                (fields.children
-                                    |> List.map (\(SimulateNode fields) -> viewFields fields)
-                                )
-                            ]
-                       )
-                )
-    in
-        div [ class "panel panel-default" ]
-            [ div [ class "panel-heading" ]
-                [ h3 [ class "panel-title" ]
-                    [ text "Calculation results"
-                      -- TODO i18n
-                    ]
-                ]
-            , div [ class "panel-body" ]
-                [ viewFields fields
-                ]
-            ]
