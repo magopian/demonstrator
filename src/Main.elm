@@ -1,10 +1,12 @@
-port module Main exposing (..)
+module Main exposing (..)
 
 import Dict exposing (Dict)
 import Html exposing (..)
 import Html.Attributes exposing (..)
 import Html.Events exposing (..)
 import Json.Decode as Decode
+import ListHelpers as List
+import Ports
 import RemoteData exposing (RemoteData(..), WebData)
 import Requests
 import Types exposing (..)
@@ -18,67 +20,6 @@ main =
         , update = update
         , subscriptions = subscriptions
         }
-
-
-
--- HELPERS
-
-
-firstNonZeroValue : List Float -> Maybe Float
-firstNonZeroValue =
-    List.head
-        >> Maybe.andThen
-            (\firstValue ->
-                if firstValue == 0 then
-                    Nothing
-                else
-                    Just firstValue
-            )
-
-
-
--- PORTS
-
-
-type alias WaterfallDataItem =
-    { isSubtotal : Bool
-    , name : String
-    , value : Float
-    }
-
-
-type alias WaterfallOptions =
-    { data : List WaterfallDataItem
-    , yMin : Float
-    , yMax : Float
-    , xLabel : String
-    , yLabel : String
-    }
-
-
-waterfallData : SimulateNode -> List WaterfallDataItem
-waterfallData (SimulateNode fields) =
-    case firstNonZeroValue fields.values of
-        Nothing ->
-            []
-
-        Just value ->
-            if List.isEmpty fields.children then
-                [ { isSubtotal = False
-                  , name = fields.shortName
-                  , value = value
-                  }
-                ]
-            else
-                (List.concatMap waterfallData fields.children)
-                    ++ [ { isSubtotal = True
-                         , name = fields.shortName
-                         , value = value
-                         }
-                       ]
-
-
-port renderWaterfall : WaterfallOptions -> Cmd msg
 
 
 
@@ -315,9 +256,9 @@ update msg model =
                             Success simulateNode ->
                                 let
                                     data =
-                                        waterfallData simulateNode
+                                        Ports.waterfallData simulateNode
                                 in
-                                    renderWaterfall
+                                    Ports.renderWaterfall
                                         { data = data
                                         , yMin = data |> List.map .value |> List.minimum |> Maybe.withDefault 0
                                         , yMax = data |> List.map .value |> List.maximum |> Maybe.withDefault 0
@@ -429,7 +370,7 @@ viewDecomposition simulateNode =
         viewSimulateNode : SimulateNode -> Html Msg
         viewSimulateNode (SimulateNode fields) =
             div []
-                (case firstNonZeroValue fields.values of
+                (case List.firstNonZeroValue fields.values of
                     Nothing ->
                         []
 
