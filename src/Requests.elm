@@ -66,8 +66,8 @@ encodeInputValue inputValue =
             Encode.int int
 
 
-encodeTestCase : List Individual -> Encode.Value
-encodeTestCase individuals =
+encodeTestCase : List Individual -> Maybe VariableName -> Encode.Value
+encodeTestCase individuals axisVariableName =
     Encode.object
         (( "individus"
            -- TODO Do not hardcode it
@@ -81,11 +81,19 @@ encodeTestCase individuals =
                                         |> Dict.toList
                                         |> List.filterMap
                                             (\( variableName, inputValue ) ->
-                                                -- TODO Do not hardcode variable name
-                                                if index == 0 && variableName == "salaire_de_base" then
-                                                    Nothing
-                                                else
-                                                    Just ( variableName, encodeInputValue inputValue )
+                                                let
+                                                    isAxisVariable =
+                                                        case axisVariableName of
+                                                            Nothing ->
+                                                                False
+
+                                                            Just axisVariableName ->
+                                                                axisVariableName == variableName
+                                                in
+                                                    if index == 0 && isAxisVariable then
+                                                        Nothing
+                                                    else
+                                                        Just ( variableName, encodeInputValue inputValue )
                                             )
                                    )
                             )
@@ -244,28 +252,43 @@ entities baseUrl =
     Http.get (baseUrl ++ "/2/entities") (field "entities" (dict entityDecoder))
 
 
-simulate : String -> List Individual -> Period -> Http.Request SimulateNode
-simulate baseUrl individuals period =
+simulate :
+    String
+    -> List Individual
+    -> Period
+    -> Int
+    -> Float
+    -> Float
+    -> Maybe VariableName
+    -> Http.Request SimulateNode
+simulate baseUrl individuals period axisCount axisMax axisMin axisVariableName =
     let
         body =
             Encode.object
                 [ ( "scenarios"
                   , Encode.list
                         [ Encode.object
-                            [ ( "axes"
-                              , Encode.list
-                                    [ Encode.object
-                                        -- TODO Do not hardcode values
-                                        [ ( "count", Encode.float 50 )
-                                        , ( "max", Encode.float 100000 )
-                                        , ( "min", Encode.float 0 )
-                                        , ( "name", Encode.string "salaire_de_base" )
-                                        ]
-                                    ]
-                              )
-                            , ( "period", Encode.string period )
-                            , ( "test_case", encodeTestCase individuals )
-                            ]
+                            ([ ( "period", Encode.string period )
+                             , ( "test_case", encodeTestCase individuals axisVariableName )
+                             ]
+                                ++ (case axisVariableName of
+                                        Nothing ->
+                                            []
+
+                                        Just axisVariableName ->
+                                            [ ( "axes"
+                                              , Encode.list
+                                                    [ Encode.object
+                                                        [ ( "count", Encode.int axisCount )
+                                                        , ( "max", Encode.float axisMax )
+                                                        , ( "min", Encode.float axisMin )
+                                                        , ( "name", Encode.string axisVariableName )
+                                                        ]
+                                                    ]
+                                              )
+                                            ]
+                                   )
+                            )
                         ]
                   )
                 ]

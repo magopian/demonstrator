@@ -38,6 +38,11 @@ main =
 
 type alias Model =
     { apiBaseUrl : String
+    , axisCount : Int
+    , axisIndex : Int
+    , axisMax : Float
+    , axisMin : Float
+    , axisVariableName : Maybe String
     , debounce : Debounce ( Period, List Individual )
     , displayDisclaimer : Bool
     , displayRoles : Bool
@@ -46,13 +51,17 @@ type alias Model =
     , period : String
     , simulateWebData : WebData SimulateNode
     , variablesWebData : WebData VariablesResponse
-    , waterfallIndex : Int
     }
 
 
 initialModel : Model
 initialModel =
     { apiBaseUrl = "//localhost:2000/api"
+    , axisCount = 50
+    , axisIndex = 0
+    , axisMax = 100000
+    , axisMin = 0
+    , axisVariableName = Nothing
     , debounce = Debounce.init
     , displayDisclaimer = True
     , displayRoles = False
@@ -61,7 +70,6 @@ initialModel =
     , period = "2015"
     , simulateWebData = NotAsked
     , variablesWebData = NotAsked
-    , waterfallIndex = 0
     }
 
 
@@ -165,6 +173,7 @@ type Msg
     | DebounceMsg Debounce.Msg
     | EntitiesResult (WebData (Dict String Entity))
     | ResetApplication
+    | SetAxis VariableName Bool
     | SetDisplayRoles Bool
     | SetInputValue Int String InputValue
     | SetPeriod String
@@ -195,7 +204,7 @@ update msg model =
                 Success simulateNode ->
                     let
                         data =
-                            Ports.waterfallData model.waterfallIndex simulateNode
+                            Ports.waterfallData model.axisIndex simulateNode
                     in
                         Ports.renderWaterfall data
 
@@ -264,6 +273,24 @@ update msg model =
                         localStorageCmd :: initialCmds model.apiBaseUrl
                 in
                     initialModel ! cmds
+
+            SetAxis newAxisVariableName bool ->
+                let
+                    ( newDebounce, cmd ) =
+                        Debounce.push debounceConfig ( model.period, model.individuals ) model.debounce
+
+                    newModel =
+                        { model
+                            | axisIndex = 0
+                            , axisVariableName =
+                                if bool then
+                                    Just newAxisVariableName
+                                else
+                                    Nothing
+                            , debounce = newDebounce
+                        }
+                in
+                    ( newModel, cmd )
 
             SetDisplayRoles bool ->
                 let
@@ -342,7 +369,7 @@ update msg model =
             SetWaterfallIndex index ->
                 let
                     newModel =
-                        { model | waterfallIndex = index }
+                        { model | axisIndex = index }
 
                     cmd =
                         renderWaterfallCmd model.simulateWebData
@@ -355,7 +382,13 @@ update msg model =
                         { model | simulateWebData = Loading }
 
                     cmd =
-                        Requests.simulate model.apiBaseUrl individuals period
+                        Requests.simulate model.apiBaseUrl
+                            individuals
+                            period
+                            model.axisCount
+                            model.axisMax
+                            model.axisMin
+                            model.axisVariableName
                             |> RemoteData.sendRequest
                             |> Cmd.map SimulateResult
                 in
@@ -455,7 +488,7 @@ view model =
                                                     ]
 
                                                 Success simulateNode ->
-                                                    [ viewDecomposition model.waterfallIndex simulateNode ]
+                                                    [ viewDecomposition model.axisIndex simulateNode ]
                                             )
                                        ]
                                 )
@@ -475,13 +508,13 @@ view model =
 
 
 viewDecomposition : Int -> SimulateNode -> Html Msg
-viewDecomposition waterfallIndex simulateNode =
+viewDecomposition axisIndex simulateNode =
     let
         viewSimulateNode : SimulateNode -> Html Msg
         viewSimulateNode (SimulateNode fields) =
             div []
                 (case
-                    List.getAt waterfallIndex fields.values
+                    List.getAt axisIndex fields.values
                         |> Maybe.andThen
                             (\value ->
                                 if value == 0 then
@@ -634,8 +667,8 @@ viewFooter =
         ]
 
 
-viewIndividual : Bool -> Dict String Entity -> VariablesResponse -> Int -> Int -> Individual -> Html Msg
-viewIndividual displayRoles entities variablesResponse waterfallIndex index individual =
+viewIndividual : Model -> Dict String Entity -> VariablesResponse -> Int -> Individual -> Html Msg
+viewIndividual model entities variablesResponse individualIndex individual =
     let
         individualLabel =
             entities
@@ -661,7 +694,7 @@ viewIndividual displayRoles entities variablesResponse waterfallIndex index indi
                                 |> Maybe.andThen
                                     (\entity ->
                                         findRole roleId entity.roles
-                                            |> Maybe.map (viewIndividualRole entities index entityId entity)
+                                            |> Maybe.map (viewIndividualRole entities individualIndex entityId entity)
                                     )
                         )
                 )
@@ -669,7 +702,7 @@ viewIndividual displayRoles entities variablesResponse waterfallIndex index indi
         div [ class "panel panel-default" ]
             [ div [ class "panel-heading" ]
                 [ h3 [ class "panel-title" ]
-                    [ text (individualLabel ++ " " ++ (toString (index + 1))) ]
+                    [ text (individualLabel ++ " " ++ (toString (individualIndex + 1))) ]
                 ]
             , ul [ class "list-group" ]
                 ([ li [ class "list-group-item" ]
@@ -682,12 +715,12 @@ viewIndividual displayRoles entities variablesResponse waterfallIndex index indi
                                         label =
                                             variableLabel variablesResponse.variables variableName
                                     in
-                                        viewInputValue index variableName label inputValue waterfallIndex
+                                        viewInputValue model individualIndex variableName label inputValue
                                 )
                         )
                     ]
                  ]
-                    ++ (if displayRoles then
+                    ++ (if model.displayRoles then
                             [ li [ class "list-group-item" ]
                                 [ viewIndividualRoles individual.roles ]
                             ]
@@ -699,13 +732,13 @@ viewIndividual displayRoles entities variablesResponse waterfallIndex index indi
 
 
 viewIndividualRole : Dict String Entity -> Int -> String -> Entity -> Role -> Html Msg
-viewIndividualRole entities index entityId entity role =
+viewIndividualRole entities individualIndex entityId entity role =
     div [ class "form-group" ]
         [ label [] [ text entity.label ]
         , select
             [ class "form-control"
             , on "change"
-                (targetValue |> Decode.map (SetRole index entityId))
+                (targetValue |> Decode.map (SetRole individualIndex entityId))
             ]
             (entity.roles
                 |> List.map
@@ -721,10 +754,10 @@ viewIndividualRole entities index entityId entity role =
 
 
 viewIndividuals : Model -> Dict String Entity -> VariablesResponse -> Html Msg
-viewIndividuals { displayRoles, individuals, period, waterfallIndex } entities variablesResponse =
+viewIndividuals model entities variablesResponse =
     div [ class "col-sm-4" ]
-        ((individuals
-            |> List.indexedMap (viewIndividual displayRoles entities variablesResponse waterfallIndex)
+        ((model.individuals
+            |> List.indexedMap (viewIndividual model entities variablesResponse)
          )
             ++ [ div [ class "checkbox" ]
                     [ label []
@@ -745,7 +778,7 @@ viewIndividuals { displayRoles, individuals, period, waterfallIndex } entities v
                         , onInput SetPeriod
                         , step "1"
                         , type_ "number"
-                        , value period
+                        , value model.period
                         ]
                         []
                     ]
@@ -753,94 +786,129 @@ viewIndividuals { displayRoles, individuals, period, waterfallIndex } entities v
         )
 
 
-viewInputValue : Int -> VariableName -> String -> InputValue -> Int -> Html Msg
-viewInputValue index variableName variableLabel inputValue waterfallIndex =
-    div [ class "form-group" ]
-        [ let
-            truncatedLabel =
-                String.left 25 variableLabel
-          in
-            label
-                [ title variableLabel
-                  -- Let the user hover the truncated label to see the full label
-                ]
-                [ text (truncatedLabel ++ "...") ]
-        , if index == 0 && variableName == "salaire_de_base" then
-            -- TODO Do not hardcode variable name
-            div []
+viewInputValue : Model -> Int -> VariableName -> String -> InputValue -> Html Msg
+viewInputValue model individualIndex variableName variableLabel inputValue =
+    let
+        isAxisVariable =
+            case model.axisVariableName of
+                Nothing ->
+                    False
+
+                Just axisVariableName ->
+                    axisVariableName == variableName
+
+        controlVariationCheckbox =
+            label []
                 [ input
-                    [ -- TODO Do not hardcode (see axis in Requests.elm)
-                      Html.Attributes.max "49"
-                    , Html.Attributes.min "0"
-                    , onInput (SetWaterfallIndex << (String.toInt >> Result.withDefault 0))
-                    , type_ "range"
-                    , value (toString waterfallIndex)
+                    [ checked isAxisVariable
+                    , onCheck (SetAxis variableName)
+                    , type_ "checkbox"
                     ]
                     []
-                  -- TODO Do not hardcode (see axis in Requests.elm)
-                , samp [] [ text (toString ((toFloat waterfallIndex) * 100000 / 49)) ]
+                , text " Control variation"
+                  -- TODO i18n
                 ]
-          else
-            case inputValue of
-                BoolInputValue bool ->
-                    text "TODO"
-
-                DateInputValue string ->
-                    text "TODO"
-
-                EnumInputValue string ->
-                    text "TODO"
-
-                FloatInputValue float ->
-                    input
-                        [ class "form-control"
-                        , onInput
-                            (\str ->
-                                let
-                                    newInputValue =
-                                        if String.isEmpty str then
-                                            FloatInputValue 0
-                                        else
-                                            case String.toFloat str of
-                                                Ok newFloat ->
-                                                    FloatInputValue newFloat
-
-                                                Err _ ->
-                                                    FloatInputValue float
-                                in
-                                    SetInputValue index variableName newInputValue
-                            )
-                        , step "any"
-                        , type_ "number"
-                        , value (toString float)
+    in
+        div [ class "form-group" ]
+            ([ let
+                truncatedLabel =
+                    String.left 25 variableLabel
+               in
+                label
+                    [ title variableLabel
+                      -- Let the user hover the truncated label to see the full label
+                    ]
+                    [ text (truncatedLabel ++ "...") ]
+             ]
+                ++ (if individualIndex == 0 && isAxisVariable then
+                        -- TODO Do not hardcode variable name
+                        [ input
+                            [ Html.Attributes.max (model.axisCount - 1 |> toString)
+                            , Html.Attributes.min "0"
+                            , onInput (SetWaterfallIndex << (String.toInt >> Result.withDefault 0))
+                            , type_ "range"
+                            , value (toString model.axisIndex)
+                            ]
+                            []
+                          -- TODO Do not hardcode (see axis in Requests.elm)
+                        , samp []
+                            [ text
+                                (toString
+                                    (((toFloat model.axisIndex) * model.axisMax)
+                                        / (model.axisCount - 1 |> toFloat)
+                                    )
+                                )
+                            ]
+                        , div [] [ controlVariationCheckbox ]
                         ]
-                        []
+                    else
+                        case inputValue of
+                            BoolInputValue bool ->
+                                [ text "TODO" ]
 
-                IntInputValue int ->
-                    input
-                        [ class "form-control"
-                        , onInput
-                            (\str ->
-                                let
-                                    newInputValue =
-                                        if String.isEmpty str then
-                                            IntInputValue 0
+                            DateInputValue string ->
+                                [ text "TODO" ]
+
+                            EnumInputValue string ->
+                                [ text "TODO" ]
+
+                            FloatInputValue float ->
+                                input
+                                    [ class "form-control"
+                                    , onInput
+                                        (\str ->
+                                            let
+                                                newInputValue =
+                                                    if String.isEmpty str then
+                                                        FloatInputValue 0
+                                                    else
+                                                        case String.toFloat str of
+                                                            Ok newFloat ->
+                                                                FloatInputValue newFloat
+
+                                                            Err _ ->
+                                                                FloatInputValue float
+                                            in
+                                                SetInputValue individualIndex variableName newInputValue
+                                        )
+                                    , step "any"
+                                    , type_ "number"
+                                    , value (toString float)
+                                    ]
+                                    []
+                                    :: (if individualIndex == 0 then
+                                            [ controlVariationCheckbox ]
                                         else
-                                            case String.toInt str of
-                                                Ok newInt ->
-                                                    IntInputValue newInt
+                                            []
+                                       )
 
-                                                Err _ ->
-                                                    IntInputValue int
-                                in
-                                    SetInputValue index variableName newInputValue
-                            )
-                        , step "1"
-                        , type_ "number"
-                        , value (toString int)
-                        ]
-                        []
-        ]
+                            IntInputValue int ->
+                                [ input
+                                    [ class "form-control"
+                                    , onInput
+                                        (\str ->
+                                            let
+                                                newInputValue =
+                                                    if String.isEmpty str then
+                                                        IntInputValue 0
+                                                    else
+                                                        case String.toInt str of
+                                                            Ok newInt ->
+                                                                IntInputValue newInt
+
+                                                            Err _ ->
+                                                                IntInputValue int
+                                            in
+                                                SetInputValue individualIndex variableName newInputValue
+                                        )
+                                    , step "1"
+                                    , type_ "number"
+                                    , value (toString int)
+                                    ]
+                                    []
+                                ]
+                   )
+            )
 
 
 viewNavBar : Html msg
