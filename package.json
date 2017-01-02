@@ -1,0 +1,10 @@
+{
+  "name": "openfisca-demonstrator",
+  "version": "0.0.1",
+  "scripts": {
+    "lint": "eslint static"
+  },
+  "devDependencies": {
+    "eslint": "^3.12.2"
+  }
+}

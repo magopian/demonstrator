@@ -13,3 +13,8 @@ Then view it:
     elm reactor --port 2025
 
 and open http://localhost:2025/index.html
+
+## Linting
+
+    npm install
+    npm run lint
