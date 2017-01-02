@@ -58,9 +58,7 @@ initialModel =
     , displayRoles = False
     , entitiesWebData = NotAsked
     , individuals = []
-    , period =
-        -- TODO Add UI to set period
-        "2015"
+    , period = "2015"
     , simulateWebData = NotAsked
     , variablesWebData = NotAsked
     , waterfallIndex = 0
@@ -169,6 +167,7 @@ type Msg
     | ResetApplication
     | SetDisplayRoles Bool
     | SetInputValue Int String InputValue
+    | SetPeriod String
     | SetRole Int String String
     | SetWaterfallIndex Int
     | Simulate ( Period, List Individual )
@@ -300,6 +299,19 @@ update msg model =
                 in
                     ( newModel, cmd )
 
+            SetPeriod newPeriod ->
+                let
+                    ( newDebounce, cmd ) =
+                        Debounce.push debounceConfig ( newPeriod, model.individuals ) model.debounce
+
+                    newModel =
+                        { model
+                            | debounce = newDebounce
+                            , period = newPeriod
+                        }
+                in
+                    ( newModel, cmd )
+
             SetRole index entityId roleId ->
                 let
                     newIndividuals =
@@ -420,11 +432,7 @@ view model =
 
                         Success ( entities, variablesResponse ) ->
                             [ div [ class "row" ]
-                                (viewIndividuals model.displayRoles
-                                    entities
-                                    variablesResponse
-                                    model.waterfallIndex
-                                    model.individuals
+                                (viewIndividuals model entities variablesResponse
                                     :: [ div [ class "col-sm-8" ]
                                             (case model.simulateWebData of
                                                 NotAsked ->
@@ -712,8 +720,8 @@ viewIndividualRole entities index entityId entity role =
         ]
 
 
-viewIndividuals : Bool -> Dict String Entity -> VariablesResponse -> Int -> List Individual -> Html Msg
-viewIndividuals displayRoles entities variablesResponse waterfallIndex individuals =
+viewIndividuals : Model -> Dict String Entity -> VariablesResponse -> Html Msg
+viewIndividuals { displayRoles, individuals, period, waterfallIndex } entities variablesResponse =
     div [ class "col-sm-4" ]
         ((individuals
             |> List.indexedMap (viewIndividual displayRoles entities variablesResponse waterfallIndex)
@@ -728,6 +736,18 @@ viewIndividuals displayRoles entities variablesResponse waterfallIndex individua
                         , text " Display roles"
                           -- TODO i18n
                         ]
+                    ]
+               , label [ class "form-group" ]
+                    [ text "Period"
+                      --TODO i18n
+                    , input
+                        [ class "form-control"
+                        , onInput SetPeriod
+                        , step "1"
+                        , type_ "number"
+                        , value period
+                        ]
+                        []
                     ]
                ]
         )
