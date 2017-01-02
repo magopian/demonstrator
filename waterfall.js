@@ -5,10 +5,11 @@ function waterfallChart (options) {
   var elementSelector = options.elementSelector,
     data = options.data,
     yFormatter = options.yFormatter,
-    margin = options.margin || {top: 20, right: 30, bottom: 30, left: 40},
-    width = 960 - margin.left - margin.right,
-    height = 500 - margin.top - margin.bottom,
-    padding = 0.3
+    viewPort = options.viewPort || {width: 960, height: 500},
+    margin = options.margin || {top: 20, right: 0, bottom: 30, left: 40}, // For axes labels
+    width = viewPort.width - margin.left - margin.right,
+    height = viewPort.height - margin.top - margin.bottom,
+    barPadding = 0.3
 
   function transformData (data) {
     // Transform data (i.e., finding cumulative values and total) for easier charting
@@ -28,7 +29,7 @@ function waterfallChart (options) {
   }
 
   var x = d3.scale.ordinal()
-    .rangeRoundBands([0, width], padding)
+    .rangeRoundBands([0, width], barPadding)
   var y = d3.scale.linear()
     .range([height, 0])
   var xAxis = d3.svg.axis()
@@ -72,12 +73,19 @@ function waterfallChart (options) {
   bar.append('text')
     .attr('x', x.rangeBand() / 2)
     .attr('y', function (d) { return y(d.end) + 5 })
-    .attr('dy', function (d) { return ((d.class == 'negative') ? '-' : '') + '.75em' })
-    .text(function (d) { return yFormatter(d.end - d.start) })
+    .attr('dy', function (d) { return (d.class === 'negative' ? '-' : '') + '.75em' })
+    .text(function (d) {
+      var sign = d.class === 'positive'
+        ? '+'
+        : d.class === 'negative'
+          ? '-'
+          : '' // class === 'total'
+      return sign + ' ' + yFormatter(d.end - d.start)
+    })
   bar.filter(function (d) { return d.class != 'total' }).append('line')
     .attr('class', 'connector')
     .attr('x1', x.rangeBand() + 5)
     .attr('y1', function (d) { return y(d.end) })
-    .attr('x2', x.rangeBand() / (1 - padding) - 5)
+    .attr('x2', x.rangeBand() / (1 - barPadding) - 5)
     .attr('y2', function (d) { return y(d.end) })
 }

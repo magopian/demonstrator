@@ -26,10 +26,12 @@
     <script src="/waterfall.js"></script>
     <script src="/_compile/src/Main.elm"></script>
     <script>
+        var app = runElmProgram();
+
+        // Waterfall
         var requestAnimationFrame = typeof window.requestAnimationFrame !== 'undefined'
             ? window.requestAnimationFrame
             : function (callback) { setTimeout(function () { callback(); }, 0); };
-
         function waterfallYFormatter(n) {
             n = Math.round(n)
             var result = n
@@ -39,21 +41,32 @@
             // TODO Do not hardcode currency
             return result + ' €'
         }
-
-        var app = runElmProgram();
-        app.ports.renderWaterfall.subscribe(function (options) {
-            // Use requestAnimationFrame to render the chart after the Elm view is rendered.
-            requestAnimationFrame(function () {
-                var elementSelector = "#waterfall";
-                var svgElement = document.querySelector(elementSelector + " svg");
+        function renderWaterfall(options) {
+            var waterfallSelector = "#waterfall";
+            var waterfallElement = document.querySelector(waterfallSelector);
+            if (waterfallElement) {
+                var svgElement = waterfallElement.querySelector("svg");
                 if (svgElement) {
                     svgElement.parentNode.removeChild(svgElement);
                 }
                 var defaultOptions = {
-                    elementSelector: elementSelector,
+                    elementSelector: waterfallSelector,
+                    viewPort: {
+                        height: waterfallElement.clientWidth * 0.5,
+                        width: waterfallElement.clientWidth
+                    },
                     yFormatter: waterfallYFormatter
-                }
+                };
                 waterfallChart(Object.assign(defaultOptions, options));
+            }
+        }
+        app.ports.renderWaterfall.subscribe(function (options) {
+            window.onresize = function (event) {
+                renderWaterfall(options);
+            };
+            // Use requestAnimationFrame to render the chart after the Elm view is rendered.
+            requestAnimationFrame(function () {
+                renderWaterfall(options);
             });
         });
     </script>

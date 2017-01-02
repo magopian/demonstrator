@@ -441,7 +441,6 @@ view model =
                                                         ( Just calculateValue, simulateNode ) ->
                                                             [ viewCalculateResult calculateValue model.period variablesResponse.variables
                                                             , viewDecomposition simulateNode
-                                                            , div [ id "waterfall" ] []
                                                             ]
 
                                                         _ ->
@@ -499,10 +498,10 @@ viewCalculateResult calculateValue period variables =
 
 
 viewDecomposition : SimulateNode -> Html Msg
-viewDecomposition (SimulateNode fields) =
+viewDecomposition simulateNode =
     let
-        viewFields : SimulateNodeFields -> Html Msg
-        viewFields fields =
+        viewSimulateNode : SimulateNode -> Html Msg
+        viewSimulateNode (SimulateNode fields) =
             div []
                 (case firstNonZeroValue fields.values of
                     Nothing ->
@@ -517,9 +516,7 @@ viewDecomposition (SimulateNode fields) =
                                     []
                                 else
                                     [ div [ style [ ( "margin-left", "1em" ) ] ]
-                                        (fields.children
-                                            |> List.map (\(SimulateNode fields) -> viewFields fields)
-                                        )
+                                        (List.map viewSimulateNode fields.children)
                                     ]
                                )
                 )
@@ -531,8 +528,13 @@ viewDecomposition (SimulateNode fields) =
                       -- TODO i18n
                     ]
                 ]
-            , div [ class "panel-body" ]
-                [ viewFields fields
+            , ul [ class "list-group" ]
+                [ li [ class "list-group-item" ]
+                    [ div [ id "waterfall" ] []
+                      -- Filled by "renderWaterfall" port
+                    ]
+                , li [ class "list-group-item" ]
+                    [ viewSimulateNode simulateNode ]
                 ]
             ]
 
