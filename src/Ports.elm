@@ -1,7 +1,7 @@
 port module Ports exposing (..)
 
 import Json.Encode as Encode
-import ListHelpers as List
+import List.Extra as List
 import Types exposing (..)
 
 
@@ -28,9 +28,18 @@ type alias WaterfallDataItem =
     }
 
 
-waterfallData : SimulateNode -> List WaterfallDataItem
-waterfallData (SimulateNode fields) =
-    case List.firstNonZeroValue fields.values of
+waterfallData : Int -> SimulateNode -> List WaterfallDataItem
+waterfallData waterfallIndex (SimulateNode fields) =
+    case
+        List.getAt waterfallIndex fields.values
+            |> Maybe.andThen
+                (\value ->
+                    if value == 0 then
+                        Nothing
+                    else
+                        Just value
+                )
+    of
         Nothing ->
             []
 
@@ -42,7 +51,7 @@ waterfallData (SimulateNode fields) =
                   }
                 ]
             else
-                (List.concatMap waterfallData fields.children)
+                (List.concatMap (waterfallData waterfallIndex) fields.children)
                     ++ [ { isSubtotal = True
                          , name = fields.shortName
                          , value = value

@@ -79,9 +79,13 @@ encodeTestCase individuals =
                             (( "id", Encode.string (individualId index) )
                                 :: (inputValues
                                         |> Dict.toList
-                                        |> List.map
+                                        |> List.filterMap
                                             (\( variableName, inputValue ) ->
-                                                ( variableName, encodeInputValue inputValue )
+                                                -- TODO Do not hardcode variable name
+                                                if index == 0 && variableName == "salaire_de_base" then
+                                                    Nothing
+                                                else
+                                                    Just ( variableName, encodeInputValue inputValue )
                                             )
                                    )
                             )
@@ -248,8 +252,19 @@ simulate baseUrl individuals period =
                 [ ( "scenarios"
                   , Encode.list
                         [ Encode.object
-                            [ ( "test_case", encodeTestCase individuals )
+                            [ ( "axes"
+                              , Encode.list
+                                    [ Encode.object
+                                        -- TODO Do not hardcode values
+                                        [ ( "count", Encode.float 50 )
+                                        , ( "max", Encode.float 100000 )
+                                        , ( "min", Encode.float 0 )
+                                        , ( "name", Encode.string "salaire_de_base" )
+                                        ]
+                                    ]
+                              )
                             , ( "period", Encode.string period )
+                            , ( "test_case", encodeTestCase individuals )
                             ]
                         ]
                   )

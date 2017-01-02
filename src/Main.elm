@@ -7,7 +7,7 @@ import Html.Attributes exposing (..)
 import Html.Events exposing (..)
 import Json.Decode as Decode
 import Json.Encode as Encode
-import ListHelpers as List
+import List.Extra as List
 import Ports
 import RemoteData exposing (RemoteData(..), WebData)
 import Requests
@@ -46,6 +46,7 @@ type alias Model =
     , period : String
     , simulateWebData : WebData SimulateNode
     , variablesWebData : WebData VariablesResponse
+    , waterfallIndex : Int
     }
 
 
@@ -62,6 +63,7 @@ initialModel =
         "2015"
     , simulateWebData = NotAsked
     , variablesWebData = NotAsked
+    , waterfallIndex = 0
     }
 
 
@@ -165,6 +167,7 @@ type Msg
     | SetDisplayRoles Bool
     | SetInputValue Int String InputValue
     | SetRole Int String String
+    | SetWaterfallIndex Int
     | Simulate ( Period, List Individual )
     | SimulateResult (WebData SimulateNode)
     | VariablesResult (WebData VariablesResponse)
@@ -190,7 +193,7 @@ update msg model =
                 Success simulateNode ->
                     let
                         data =
-                            Ports.waterfallData simulateNode
+                            Ports.waterfallData model.waterfallIndex simulateNode
                     in
                         Ports.renderWaterfall data
 
@@ -321,6 +324,16 @@ update msg model =
                 in
                     ( newModel, cmd )
 
+            SetWaterfallIndex index ->
+                let
+                    newModel =
+                        { model | waterfallIndex = index }
+
+                    cmd =
+                        renderWaterfallCmd model.simulateWebData
+                in
+                    ( newModel, cmd )
+
             Simulate ( period, individuals ) ->
                 let
                     newModel =
@@ -341,8 +354,11 @@ update msg model =
                                 webData
                                     |> RemoteData.mapError (Debug.log "model.simulateWebData Failure")
                         }
+
+                    cmd =
+                        renderWaterfallCmd webData
                 in
-                    ( newModel, renderWaterfallCmd webData )
+                    ( newModel, cmd )
 
             VariablesResult webData ->
                 let
@@ -401,7 +417,11 @@ view model =
 
                         Success ( entities, variablesResponse ) ->
                             [ div [ class "row" ]
-                                (viewIndividuals model.displayRoles entities variablesResponse model.individuals
+                                (viewIndividuals model.displayRoles
+                                    entities
+                                    variablesResponse
+                                    model.waterfallIndex
+                                    model.individuals
                                     :: [ div [ class "col-sm-8" ]
                                             (case model.simulateWebData of
                                                 NotAsked ->
@@ -424,7 +444,7 @@ view model =
                                                     ]
 
                                                 Success simulateNode ->
-                                                    [ viewDecomposition simulateNode ]
+                                                    [ viewDecomposition model.waterfallIndex simulateNode ]
                                             )
                                        ]
                                 )
@@ -443,13 +463,22 @@ view model =
         ]
 
 
-viewDecomposition : SimulateNode -> Html Msg
-viewDecomposition simulateNode =
+viewDecomposition : Int -> SimulateNode -> Html Msg
+viewDecomposition waterfallIndex simulateNode =
     let
         viewSimulateNode : SimulateNode -> Html Msg
         viewSimulateNode (SimulateNode fields) =
             div []
-                (case List.firstNonZeroValue fields.values of
+                (case
+                    List.getAt waterfallIndex fields.values
+                        |> Maybe.andThen
+                            (\value ->
+                                if value == 0 then
+                                    Nothing
+                                else
+                                    Just value
+                            )
+                 of
                     Nothing ->
                         []
 
@@ -476,8 +505,9 @@ viewDecomposition simulateNode =
                 ]
             , ul [ class "list-group" ]
                 [ li [ class "list-group-item" ]
-                    [ div [ id "waterfall" ] []
-                      -- Filled by "renderWaterfall" port
+                    [ div [ id "waterfall" ]
+                        [-- Filled by "renderWaterfall" port
+                        ]
                     ]
                 , li [ class "list-group-item" ]
                     [ viewSimulateNode simulateNode ]
@@ -593,8 +623,8 @@ viewFooter =
         ]
 
 
-viewIndividual : Bool -> Dict String Entity -> VariablesResponse -> Int -> Individual -> Html Msg
-viewIndividual displayRoles entities variablesResponse index individual =
+viewIndividual : Bool -> Dict String Entity -> VariablesResponse -> Int -> Int -> Individual -> Html Msg
+viewIndividual displayRoles entities variablesResponse waterfallIndex index individual =
     let
         individualLabel =
             entities
@@ -607,9 +637,8 @@ viewIndividual displayRoles entities variablesResponse index individual =
                             Nothing
                     )
                 |> List.head
-                -- TODO i18n
-                |>
-                    Maybe.withDefault "Individual"
+                |> -- TODO i18n
+                   Maybe.withDefault "Individual"
 
         viewIndividualRoles roles =
             div []
@@ -642,7 +671,7 @@ viewIndividual displayRoles entities variablesResponse index individual =
                                         label =
                                             variableLabel variablesResponse.variables variableName
                                     in
-                                        viewInputValue index variableName label inputValue
+                                        viewInputValue index variableName label inputValue waterfallIndex
                                 )
                         )
                     ]
@@ -680,11 +709,11 @@ viewIndividualRole entities index entityId entity role =
         ]
 
 
-viewIndividuals : Bool -> Dict String Entity -> VariablesResponse -> List Individual -> Html Msg
-viewIndividuals displayRoles entities variablesResponse individuals =
+viewIndividuals : Bool -> Dict String Entity -> VariablesResponse -> Int -> List Individual -> Html Msg
+viewIndividuals displayRoles entities variablesResponse waterfallIndex individuals =
     div [ class "col-sm-4" ]
         ((individuals
-            |> List.indexedMap (viewIndividual displayRoles entities variablesResponse)
+            |> List.indexedMap (viewIndividual displayRoles entities variablesResponse waterfallIndex)
          )
             ++ [ div [ class "checkbox" ]
                     [ label []
@@ -701,8 +730,8 @@ viewIndividuals displayRoles entities variablesResponse individuals =
         )
 
 
-viewInputValue : Int -> VariableName -> String -> InputValue -> Html Msg
-viewInputValue index variableName variableLabel inputValue =
+viewInputValue : Int -> VariableName -> String -> InputValue -> Int -> Html Msg
+viewInputValue index variableName variableLabel inputValue waterfallIndex =
     div [ class "form-group" ]
         [ let
             truncatedLabel =
@@ -713,65 +742,81 @@ viewInputValue index variableName variableLabel inputValue =
                   -- Let the user hover the truncated label to see the full label
                 ]
                 [ text (truncatedLabel ++ "...") ]
-        , case inputValue of
-            BoolInputValue bool ->
-                text "TODO"
-
-            DateInputValue string ->
-                text "TODO"
-
-            EnumInputValue string ->
-                text "TODO"
-
-            FloatInputValue float ->
-                input
-                    [ class "form-control"
-                    , onInput
-                        (\str ->
-                            let
-                                newInputValue =
-                                    if String.isEmpty str then
-                                        FloatInputValue 0
-                                    else
-                                        case String.toFloat str of
-                                            Ok newFloat ->
-                                                FloatInputValue newFloat
-
-                                            Err _ ->
-                                                FloatInputValue float
-                            in
-                                SetInputValue index variableName newInputValue
-                        )
-                    , step "any"
-                    , type_ "number"
-                    , value (toString float)
+        , if index == 0 && variableName == "salaire_de_base" then
+            -- TODO Do not hardcode variable name
+            div []
+                [ input
+                    [ -- TODO Do not hardcode (see axis in Requests.elm)
+                      Html.Attributes.max "49"
+                    , Html.Attributes.min "0"
+                    , onInput (SetWaterfallIndex << (String.toInt >> Result.withDefault 0))
+                    , type_ "range"
+                    , value (toString waterfallIndex)
                     ]
                     []
+                  -- TODO Do not hardcode (see axis in Requests.elm)
+                , samp [] [ text (toString ((toFloat waterfallIndex) * 100000 / 49)) ]
+                ]
+          else
+            case inputValue of
+                BoolInputValue bool ->
+                    text "TODO"
 
-            IntInputValue int ->
-                input
-                    [ class "form-control"
-                    , onInput
-                        (\str ->
-                            let
-                                newInputValue =
-                                    if String.isEmpty str then
-                                        IntInputValue 0
-                                    else
-                                        case String.toInt str of
-                                            Ok newInt ->
-                                                IntInputValue newInt
+                DateInputValue string ->
+                    text "TODO"
 
-                                            Err _ ->
-                                                IntInputValue int
-                            in
-                                SetInputValue index variableName newInputValue
-                        )
-                    , step "1"
-                    , type_ "number"
-                    , value (toString int)
-                    ]
-                    []
+                EnumInputValue string ->
+                    text "TODO"
+
+                FloatInputValue float ->
+                    input
+                        [ class "form-control"
+                        , onInput
+                            (\str ->
+                                let
+                                    newInputValue =
+                                        if String.isEmpty str then
+                                            FloatInputValue 0
+                                        else
+                                            case String.toFloat str of
+                                                Ok newFloat ->
+                                                    FloatInputValue newFloat
+
+                                                Err _ ->
+                                                    FloatInputValue float
+                                in
+                                    SetInputValue index variableName newInputValue
+                            )
+                        , step "any"
+                        , type_ "number"
+                        , value (toString float)
+                        ]
+                        []
+
+                IntInputValue int ->
+                    input
+                        [ class "form-control"
+                        , onInput
+                            (\str ->
+                                let
+                                    newInputValue =
+                                        if String.isEmpty str then
+                                            IntInputValue 0
+                                        else
+                                            case String.toInt str of
+                                                Ok newInt ->
+                                                    IntInputValue newInt
+
+                                                Err _ ->
+                                                    IntInputValue int
+                                in
+                                    SetInputValue index variableName newInputValue
+                            )
+                        , step "1"
+                        , type_ "number"
+                        , value (toString int)
+                        ]
+                        []
         ]
 
 

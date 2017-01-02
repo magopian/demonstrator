@@ -1,7 +1,7 @@
 module Types exposing (..)
 
 import Dict exposing (Dict)
-import List.Extra exposing (..)
+import List.Extra as List
 
 
 -- HELPERS
@@ -124,7 +124,7 @@ groupEntities individuals =
                                 Dict.singleton roleId [ individualId index ]
                             )
                 )
-            |> foldl1 mergeTestCases
+            |> List.foldl1 mergeTestCases
 
 
 
