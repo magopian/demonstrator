@@ -101,11 +101,6 @@ encodeTestCase individuals =
 -- DECODERS
 
 
-calculateValueDecoder : Decoder CalculateValue
-calculateValueDecoder =
-    dict (dict (list float))
-
-
 entityDecoder : Decoder Entity
 entityDecoder =
     -- TODO (list roleDecoder) does not work with optionalField
@@ -238,36 +233,6 @@ variablesResponseDecoder =
 
 
 -- REQUESTS
-
-
-calculate : String -> List Individual -> Period -> Http.Request (Maybe CalculateValue)
-calculate baseUrl individuals period =
-    let
-        body =
-            Encode.object
-                [ ( "scenarios"
-                  , Encode.list
-                        [ Encode.object
-                            [ ( "test_case", encodeTestCase individuals )
-                            , ( "period", Encode.string period )
-                            ]
-                        ]
-                  )
-                , ( "variables"
-                  , Encode.list
-                        [ Encode.string "revenu_disponible"
-                          -- TODO parametrize
-                        ]
-                  )
-                , ( "output_format", Encode.string "variables" )
-                ]
-                |> Http.jsonBody
-    in
-        Http.post (baseUrl ++ "/1/calculate")
-            body
-            (field "value" (list calculateValueDecoder)
-                |> map List.head
-            )
 
 
 entities : String -> Http.Request (Dict String Entity)

@@ -136,14 +136,6 @@ type alias Period =
 
 
 
--- CALCULATE
-
-
-type alias CalculateValue =
-    Dict VariableName (Dict Period (List Float))
-
-
-
 -- SIMULATE
 
 

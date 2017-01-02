@@ -87,7 +87,6 @@ port renderWaterfall : WaterfallOptions -> Cmd msg
 
 type alias Model =
     { baseUrl : String
-    , calculateWebData : WebData (Maybe CalculateValue)
     , displayDisclaimer : Bool
     , entitiesWebData : WebData (Dict String Entity)
     , individuals : List Individual
@@ -100,7 +99,6 @@ type alias Model =
 initialModel : Model
 initialModel =
     { baseUrl = ""
-    , calculateWebData = NotAsked
     , displayDisclaimer = True
     , entitiesWebData = NotAsked
     , individuals = []
@@ -202,8 +200,7 @@ init =
 
 
 type Msg
-    = CalculateResult (WebData (Maybe CalculateValue))
-    | CloseDisclaimer
+    = CloseDisclaimer
     | EntitiesResult (WebData (Dict String Entity))
     | SetInputValue Int String InputValue
     | SetRole Int String String
@@ -214,28 +211,12 @@ type Msg
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     let
-        calculateCmd individuals =
-            Requests.calculate model.baseUrl individuals model.period
-                |> RemoteData.sendRequest
-                |> Cmd.map CalculateResult
-
         simulateCmd individuals =
             Requests.simulate model.baseUrl individuals model.period
                 |> RemoteData.sendRequest
                 |> Cmd.map SimulateResult
     in
         case msg of
-            CalculateResult webData ->
-                let
-                    newModel =
-                        { model
-                            | calculateWebData =
-                                webData
-                                    |> RemoteData.mapError (Debug.log "model.calculateWebData Failure")
-                        }
-                in
-                    ( newModel, Cmd.none )
-
             CloseDisclaimer ->
                 ( model, Cmd.none )
 
@@ -251,8 +232,7 @@ update msg model =
 
                     newModel =
                         { model
-                            | calculateWebData = Loading
-                            , entitiesWebData =
+                            | entitiesWebData =
                                 webData
                                     |> RemoteData.mapError (Debug.log "model.entitiesWebData Failure")
                             , individuals = newIndividuals
@@ -260,8 +240,7 @@ update msg model =
                         }
 
                     cmds =
-                        [ calculateCmd newIndividuals
-                        , simulateCmd newIndividuals
+                        [ simulateCmd newIndividuals
                         ]
                 in
                     newModel ! cmds
@@ -284,14 +263,12 @@ update msg model =
 
                     newModel =
                         { model
-                            | calculateWebData = Loading
-                            , individuals = newIndividuals
+                            | individuals = newIndividuals
                             , simulateWebData = Loading
                         }
 
                     cmds =
-                        [ calculateCmd newIndividuals
-                        , simulateCmd newIndividuals
+                        [ simulateCmd newIndividuals
                         ]
                 in
                     newModel ! cmds
@@ -314,14 +291,12 @@ update msg model =
 
                     newModel =
                         { model
-                            | calculateWebData = Loading
-                            , individuals = newIndividuals
+                            | individuals = newIndividuals
                             , simulateWebData = Loading
                         }
 
                     cmds =
-                        [ calculateCmd newIndividuals
-                        , simulateCmd newIndividuals
+                        [ simulateCmd newIndividuals
                         ]
                 in
                     newModel ! cmds
@@ -416,7 +391,7 @@ view model =
                             [ div [ class "row" ]
                                 (viewIndividuals entities variablesResponse model.individuals
                                     :: [ div [ class "col-sm-8" ]
-                                            (case RemoteData.append model.calculateWebData model.simulateWebData of
+                                            (case model.simulateWebData of
                                                 NotAsked ->
                                                     []
 
@@ -436,15 +411,8 @@ view model =
                                                         ]
                                                     ]
 
-                                                Success ( calculateValue, simulateNode ) ->
-                                                    case ( calculateValue, simulateNode ) of
-                                                        ( Just calculateValue, simulateNode ) ->
-                                                            [ viewCalculateResult calculateValue model.period variablesResponse.variables
-                                                            , viewDecomposition simulateNode
-                                                            ]
-
-                                                        _ ->
-                                                            []
+                                                Success simulateNode ->
+                                                    [ viewDecomposition simulateNode ]
                                             )
                                        ]
                                 )
@@ -452,48 +420,6 @@ view model =
                    )
             )
         , viewFooter
-        ]
-
-
-viewCalculateResult : CalculateValue -> Period -> Dict String Variable -> Html Msg
-viewCalculateResult calculateValue period variables =
-    div [ class "panel panel-default" ]
-        [ div [ class "panel-heading" ]
-            [ h3 [ class "panel-title" ]
-                [ text "Calculation results"
-                  -- TODO i18n
-                ]
-            ]
-        , div [ class "panel-body" ]
-            [ dl []
-                (calculateValue
-                    |> Dict.toList
-                    |> List.concatMap
-                        (\( variableName, valuesByPeriod ) ->
-                            case
-                                valuesByPeriod
-                                    |> Dict.get period
-                                    |> Maybe.andThen List.head
-                            of
-                                Nothing ->
-                                    []
-
-                                Just value ->
-                                    let
-                                        label =
-                                            variableLabel variables variableName
-                                    in
-                                        [ dt
-                                            [ title label
-                                              -- dt can be truncated by Bootstrap so allow user to hover
-                                            ]
-                                            [ text label ]
-                                        , dd []
-                                            [ samp [] [ text (toString value) ] ]
-                                        ]
-                        )
-                )
-            ]
         ]
 
 
