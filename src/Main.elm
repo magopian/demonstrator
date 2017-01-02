@@ -48,8 +48,8 @@ type alias Model =
     , displayRoles : Bool
     , entitiesWebData : WebData (Dict String Entity)
     , individuals : List Individual
-    , period : String
     , simulateWebData : WebData SimulateNode
+    , year : Period
     , variablesWebData : WebData VariablesResponse
     }
 
@@ -67,8 +67,8 @@ initialModel =
     , displayRoles = False
     , entitiesWebData = NotAsked
     , individuals = []
-    , period = "2015"
     , simulateWebData = NotAsked
+    , year = 2015
     , variablesWebData = NotAsked
     }
 
@@ -176,9 +176,9 @@ type Msg
     | SetAxis VariableName Bool
     | SetDisplayRoles Bool
     | SetInputValue Int String InputValue
-    | SetPeriod String
     | SetRole Int String String
     | SetWaterfallIndex Int
+    | SetYear Int
     | Simulate ( Period, List Individual )
     | SimulateResult (WebData SimulateNode)
     | VariablesResult (WebData VariablesResponse)
@@ -257,7 +257,7 @@ update msg model =
                         }
 
                     cmd =
-                        simulate ( model.period, newIndividuals )
+                        simulate ( model.year, newIndividuals )
                 in
                     ( newModel, cmd )
 
@@ -277,7 +277,7 @@ update msg model =
             SetAxis newAxisVariableName bool ->
                 let
                     ( newDebounce, cmd ) =
-                        Debounce.push debounceConfig ( model.period, model.individuals ) model.debounce
+                        Debounce.push debounceConfig ( model.year, model.individuals ) model.debounce
 
                     newModel =
                         { model
@@ -316,7 +316,7 @@ update msg model =
                                 )
 
                     ( newDebounce, cmd ) =
-                        Debounce.push debounceConfig ( model.period, newIndividuals ) model.debounce
+                        Debounce.push debounceConfig ( model.year, newIndividuals ) model.debounce
 
                     newModel =
                         { model
@@ -326,15 +326,15 @@ update msg model =
                 in
                     ( newModel, cmd )
 
-            SetPeriod newPeriod ->
+            SetYear newYear ->
                 let
                     ( newDebounce, cmd ) =
-                        Debounce.push debounceConfig ( newPeriod, model.individuals ) model.debounce
+                        Debounce.push debounceConfig ( newYear, model.individuals ) model.debounce
 
                     newModel =
                         { model
                             | debounce = newDebounce
-                            , period = newPeriod
+                            , year = newYear
                         }
                 in
                     ( newModel, cmd )
@@ -356,7 +356,7 @@ update msg model =
                                 )
 
                     ( newDebounce, cmd ) =
-                        Debounce.push debounceConfig ( model.period, newIndividuals ) model.debounce
+                        Debounce.push debounceConfig ( model.year, newIndividuals ) model.debounce
 
                     newModel =
                         { model
@@ -376,7 +376,7 @@ update msg model =
                 in
                     ( newModel, cmd )
 
-            Simulate ( period, individuals ) ->
+            Simulate ( year, individuals ) ->
                 let
                     newModel =
                         { model | simulateWebData = Loading }
@@ -384,7 +384,7 @@ update msg model =
                     cmd =
                         Requests.simulate model.apiBaseUrl
                             individuals
-                            period
+                            year
                             model.axisCount
                             model.axisMax
                             model.axisMin
@@ -768,14 +768,14 @@ viewIndividuals model entities variablesResponse =
                         ]
                     ]
                , label [ class "form-group" ]
-                    [ text "Period"
+                    [ text "Calculate for year"
                       --TODO i18n
                     , input
                         [ class "form-control"
-                        , onInput SetPeriod
+                        , onInput (SetYear << (String.toInt >> Result.withDefault model.year))
                         , step "1"
                         , type_ "number"
-                        , value model.period
+                        , value (toString model.year)
                         ]
                         []
                     ]

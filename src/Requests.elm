@@ -8,6 +8,14 @@ import Json.Encode as Encode
 import Types exposing (..)
 
 
+-- CONSTANTS
+
+
+nbYearsPadding =
+    5
+
+
+
 -- ENCODERS
 
 
@@ -66,8 +74,8 @@ encodeInputValue inputValue =
             Encode.int int
 
 
-encodeTestCase : List Individual -> Maybe VariableName -> Encode.Value
-encodeTestCase individuals axisVariableName =
+encodeTestCase : List Individual -> Period -> Maybe VariableName -> Encode.Value
+encodeTestCase individuals year axisVariableName =
     Encode.object
         (( "individus"
            -- TODO Do not hardcode it
@@ -89,11 +97,25 @@ encodeTestCase individuals axisVariableName =
 
                                                             Just axisVariableName ->
                                                                 axisVariableName == variableName
+
+                                                    encodedInputValue =
+                                                        encodeInputValue inputValue
                                                 in
                                                     if index == 0 && isAxisVariable then
                                                         Nothing
                                                     else
-                                                        Just ( variableName, encodeInputValue inputValue )
+                                                        Just
+                                                            ( variableName
+                                                            , Encode.object
+                                                                ((List.range 0 (nbYearsPadding - 1))
+                                                                    |> List.map
+                                                                        (\n ->
+                                                                            ( year - n |> toString
+                                                                            , encodedInputValue
+                                                                            )
+                                                                        )
+                                                                )
+                                                            )
                                             )
                                    )
                             )
@@ -261,15 +283,15 @@ simulate :
     -> Float
     -> Maybe VariableName
     -> Http.Request SimulateNode
-simulate baseUrl individuals period axisCount axisMax axisMin axisVariableName =
+simulate baseUrl individuals year axisCount axisMax axisMin axisVariableName =
     let
         body =
             Encode.object
                 [ ( "scenarios"
                   , Encode.list
                         [ Encode.object
-                            ([ ( "period", Encode.string period )
-                             , ( "test_case", encodeTestCase individuals axisVariableName )
+                            ([ ( "period", Encode.int year )
+                             , ( "test_case", encodeTestCase individuals year axisVariableName )
                              ]
                                 ++ (case axisVariableName of
                                         Nothing ->
@@ -283,6 +305,13 @@ simulate baseUrl individuals period axisCount axisMax axisMin axisVariableName =
                                                         , ( "max", Encode.float axisMax )
                                                         , ( "min", Encode.float axisMin )
                                                         , ( "name", Encode.string axisVariableName )
+                                                          -- , ( "period"
+                                                          --   , Encode.string
+                                                          --         (toString (year - nbYearsPadding + 1)
+                                                          --             ++ ":"
+                                                          --             ++ (toString nbYearsPadding)
+                                                          --         )
+                                                          --   )
                                                         ]
                                                     ]
                                               )

@@ -132,7 +132,7 @@ groupEntities individuals =
 
 
 type alias Period =
-    String
+    Int
 
 
 
