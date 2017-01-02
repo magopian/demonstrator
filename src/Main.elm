@@ -5,6 +5,7 @@ import Html exposing (..)
 import Html.Attributes exposing (..)
 import Html.Events exposing (..)
 import Json.Decode as Decode
+import Json.Encode as Encode
 import ListHelpers as List
 import Ports
 import RemoteData exposing (RemoteData(..), WebData)
@@ -12,9 +13,15 @@ import Requests
 import Types exposing (..)
 
 
-main : Program Never Model Msg
+type alias Flags =
+    { apiBaseUrl : Maybe String
+    , displayDisclaimer : Maybe Bool
+    }
+
+
+main : Program Flags Model Msg
 main =
-    Html.program
+    Html.programWithFlags
         { init = init
         , view = view
         , update = update
@@ -27,7 +34,7 @@ main =
 
 
 type alias Model =
-    { baseUrl : String
+    { apiBaseUrl : String
     , displayDisclaimer : Bool
     , entitiesWebData : WebData (Dict String Entity)
     , individuals : List Individual
@@ -39,7 +46,7 @@ type alias Model =
 
 initialModel : Model
 initialModel =
-    { baseUrl = ""
+    { apiBaseUrl = "//localhost:2000/api"
     , displayDisclaimer = True
     , entitiesWebData = NotAsked
     , individuals = []
@@ -109,31 +116,33 @@ initialRoles entities getter =
         |> Dict.fromList
 
 
-init : ( Model, Cmd Msg )
-init =
-    -- TODO Load baseUrl and displayDisclaimer from flags and store setting in localStorage.
+initialCmds : String -> List (Cmd Msg)
+initialCmds apiBaseUrl =
     let
-        baseUrl =
-            -- "https://api.openfisca.fr/api"
-            "http://localhost:2000/api"
-
-        newModel =
-            { initialModel
-                | baseUrl = baseUrl
-                , variablesWebData = Loading
-            }
-
         entitiesCmd =
-            Requests.entities baseUrl
+            Requests.entities apiBaseUrl
                 |> RemoteData.sendRequest
                 |> Cmd.map EntitiesResult
 
         variablesCmd =
-            Requests.variables baseUrl
+            Requests.variables apiBaseUrl
                 |> RemoteData.sendRequest
                 |> Cmd.map VariablesResult
     in
-        newModel ! [ entitiesCmd, variablesCmd ]
+        [ entitiesCmd, variablesCmd ]
+
+
+init : Flags -> ( Model, Cmd Msg )
+init { apiBaseUrl, displayDisclaimer } =
+    let
+        newModel =
+            { initialModel
+                | apiBaseUrl = apiBaseUrl |> Maybe.withDefault initialModel.apiBaseUrl
+                , displayDisclaimer = displayDisclaimer |> Maybe.withDefault initialModel.displayDisclaimer
+                , variablesWebData = Loading
+            }
+    in
+        newModel ! initialCmds newModel.apiBaseUrl
 
 
 
@@ -143,6 +152,7 @@ init =
 type Msg
     = CloseDisclaimer
     | EntitiesResult (WebData (Dict String Entity))
+    | ResetApplication
     | SetInputValue Int String InputValue
     | SetRole Int String String
     | SimulateResult (WebData SimulateNode)
@@ -152,14 +162,47 @@ type Msg
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     let
+        renderWaterfallCmd webData =
+            case webData of
+                Success simulateNode ->
+                    let
+                        data =
+                            Ports.waterfallData simulateNode
+                    in
+                        Ports.renderWaterfall
+                            { data = data
+                            , yMin = data |> List.map .value |> List.minimum |> Maybe.withDefault 0
+                            , yMax = data |> List.map .value |> List.maximum |> Maybe.withDefault 0
+                            , xLabel = ""
+                            , yLabel =
+                                "€"
+                                -- TODO Do not hardcode
+                            }
+
+                _ ->
+                    Cmd.none
+
         simulateCmd individuals =
-            Requests.simulate model.baseUrl individuals model.period
+            Requests.simulate model.apiBaseUrl individuals model.period
                 |> RemoteData.sendRequest
                 |> Cmd.map SimulateResult
     in
         case msg of
             CloseDisclaimer ->
-                ( model, Cmd.none )
+                let
+                    newModel =
+                        { model | displayDisclaimer = False }
+
+                    localStorageCmd =
+                        Ports.writeToLocalStorage
+                            { key = "display-disclaimer"
+                            , value = Just (Encode.bool False)
+                            }
+
+                    cmds =
+                        [ localStorageCmd, renderWaterfallCmd model.simulateWebData ]
+                in
+                    newModel ! cmds
 
             EntitiesResult webData ->
                 let
@@ -181,10 +224,22 @@ update msg model =
                         }
 
                     cmds =
-                        [ simulateCmd newIndividuals
-                        ]
+                        [ simulateCmd newIndividuals ]
                 in
                     newModel ! cmds
+
+            ResetApplication ->
+                let
+                    localStorageCmd =
+                        Ports.writeToLocalStorage
+                            { key = "display-disclaimer"
+                            , value = Nothing
+                            }
+
+                    cmds =
+                        localStorageCmd :: initialCmds model.apiBaseUrl
+                in
+                    initialModel ! cmds
 
             SetInputValue index variableName inputValue ->
                 let
@@ -209,8 +264,7 @@ update msg model =
                         }
 
                     cmds =
-                        [ simulateCmd newIndividuals
-                        ]
+                        [ simulateCmd newIndividuals ]
                 in
                     newModel ! cmds
 
@@ -237,8 +291,7 @@ update msg model =
                         }
 
                     cmds =
-                        [ simulateCmd newIndividuals
-                        ]
+                        [ simulateCmd newIndividuals ]
                 in
                     newModel ! cmds
 
@@ -250,28 +303,8 @@ update msg model =
                                 webData
                                     |> RemoteData.mapError (Debug.log "model.simulateWebData Failure")
                         }
-
-                    renderWaterfallCmd =
-                        case webData of
-                            Success simulateNode ->
-                                let
-                                    data =
-                                        Ports.waterfallData simulateNode
-                                in
-                                    Ports.renderWaterfall
-                                        { data = data
-                                        , yMin = data |> List.map .value |> List.minimum |> Maybe.withDefault 0
-                                        , yMax = data |> List.map .value |> List.maximum |> Maybe.withDefault 0
-                                        , xLabel = ""
-                                        , yLabel =
-                                            "€"
-                                            -- TODO Do not hardcode
-                                        }
-
-                            _ ->
-                                Cmd.none
                 in
-                    ( newModel, renderWaterfallCmd )
+                    ( newModel, renderWaterfallCmd webData )
 
             VariablesResult webData ->
                 let
@@ -359,6 +392,14 @@ view model =
                                 )
                             ]
                    )
+                ++ [ button
+                        [ class "btn btn-default pull-right"
+                        , onClick ResetApplication
+                        , title "Clear all custom data and make the application look like the first time it was loaded."
+                        ]
+                        [ text "Reset application"
+                        ]
+                   ]
             )
         , viewFooter
         ]
@@ -411,7 +452,6 @@ viewDisclaimer =
     div [ class "alert alert-info" ]
         [ button
             [ attribute "aria-hidden" "true"
-            , attribute "data-dismiss" "alert"
             , class "close"
             , onClick CloseDisclaimer
             , type_ "button"
@@ -427,11 +467,11 @@ viewDisclaimer =
             ]
         , p []
             [ strong [] [ text "Les résultats affichés n'ont en aucun cas un caractère officiel." ] ]
-          -- , button -- TODO Store setting in localStorage
-          --     [ class "btn btn-link"
-          --     , onClick CloseDisclaimer
-          --     ]
-          --     [ text "J'ai compris, ne plus afficher" ]
+        , button
+            [ class "btn btn-link"
+            , onClick CloseDisclaimer
+            ]
+            [ text "J'ai compris, ne plus afficher" ]
         ]
 
 

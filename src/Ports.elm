@@ -1,7 +1,24 @@
 port module Ports exposing (..)
 
+import Json.Encode as Encode
 import ListHelpers as List
 import Types exposing (..)
+
+
+-- LOCAL STORAGE
+
+
+type alias LocalStorageOptions =
+    { key : String
+    , value : Maybe Encode.Value
+    }
+
+
+port writeToLocalStorage : LocalStorageOptions -> Cmd msg
+
+
+
+-- WATERFALL
 
 
 type alias WaterfallDataItem =

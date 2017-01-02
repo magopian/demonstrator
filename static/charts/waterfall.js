@@ -1,6 +1,7 @@
 // From http://bl.ocks.org/chucklam/f3c7b3e3709a0afd5d57
 // Or as a Gist https://gist.github.com/chucklam/f3c7b3e3709a0afd5d57
 
+// eslint-disable-next-line no-unused-vars
 function waterfallChart (options) {
   var elementSelector = options.elementSelector,
     data = options.data,
@@ -45,11 +46,6 @@ function waterfallChart (options) {
     .attr('height', height + margin.top + margin.bottom)
     .append('g')
     .attr('transform', 'translate(' + margin.left + ',' + margin.top + ')')
-
-  function type (d) {
-    d.value = +d.value
-    return d
-  }
 
   transformData(data)
   x.domain(data.map(function (d) { return d.name }))
