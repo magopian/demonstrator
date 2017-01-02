@@ -40,6 +40,7 @@ type alias Model =
     { apiBaseUrl : String
     , debounce : Debounce ( Period, List Individual )
     , displayDisclaimer : Bool
+    , displayRoles : Bool
     , entitiesWebData : WebData (Dict String Entity)
     , individuals : List Individual
     , period : String
@@ -53,6 +54,7 @@ initialModel =
     { apiBaseUrl = "//localhost:2000/api"
     , debounce = Debounce.init
     , displayDisclaimer = True
+    , displayRoles = False
     , entitiesWebData = NotAsked
     , individuals = []
     , period =
@@ -160,6 +162,7 @@ type Msg
     | DebounceMsg Debounce.Msg
     | EntitiesResult (WebData (Dict String Entity))
     | ResetApplication
+    | SetDisplayRoles Bool
     | SetInputValue Int String InputValue
     | SetRole Int String String
     | Simulate ( Period, List Individual )
@@ -265,6 +268,13 @@ update msg model =
                         localStorageCmd :: initialCmds model.apiBaseUrl
                 in
                     initialModel ! cmds
+
+            SetDisplayRoles bool ->
+                let
+                    newModel =
+                        { model | displayRoles = bool }
+                in
+                    ( newModel, Cmd.none )
 
             SetInputValue index variableName inputValue ->
                 let
@@ -400,7 +410,7 @@ view model =
 
                         Success ( entities, variablesResponse ) ->
                             [ div [ class "row" ]
-                                (viewIndividuals entities variablesResponse model.individuals
+                                (viewIndividuals model.displayRoles entities variablesResponse model.individuals
                                     :: [ div [ class "col-sm-8" ]
                                             (case model.simulateWebData of
                                                 NotAsked ->
@@ -592,8 +602,8 @@ viewFooter =
         ]
 
 
-viewIndividual : Dict String Entity -> VariablesResponse -> Int -> Individual -> Html Msg
-viewIndividual entities variablesResponse index individual =
+viewIndividual : Bool -> Dict String Entity -> VariablesResponse -> Int -> Individual -> Html Msg
+viewIndividual displayRoles entities variablesResponse index individual =
     let
         individualLabel =
             entities
@@ -631,7 +641,7 @@ viewIndividual entities variablesResponse index individual =
                     [ text (individualLabel ++ " " ++ (toString (index + 1))) ]
                 ]
             , ul [ class "list-group" ]
-                [ li [ class "list-group-item" ]
+                ([ li [ class "list-group-item" ]
                     [ div []
                         (individual.inputValues
                             |> Dict.toList
@@ -645,9 +655,15 @@ viewIndividual entities variablesResponse index individual =
                                 )
                         )
                     ]
-                , li [ class "list-group-item" ]
-                    [ viewIndividualRoles individual.roles ]
-                ]
+                 ]
+                    ++ (if displayRoles then
+                            [ li [ class "list-group-item" ]
+                                [ viewIndividualRoles individual.roles ]
+                            ]
+                        else
+                            []
+                       )
+                )
             ]
 
 
@@ -673,11 +689,24 @@ viewIndividualRole entities index entityId entity role =
         ]
 
 
-viewIndividuals : Dict String Entity -> VariablesResponse -> List Individual -> Html Msg
-viewIndividuals entities variablesResponse individuals =
+viewIndividuals : Bool -> Dict String Entity -> VariablesResponse -> List Individual -> Html Msg
+viewIndividuals displayRoles entities variablesResponse individuals =
     div [ class "col-sm-4" ]
-        (individuals
-            |> List.indexedMap (viewIndividual entities variablesResponse)
+        ((individuals
+            |> List.indexedMap (viewIndividual displayRoles entities variablesResponse)
+         )
+            ++ [ div [ class "checkbox" ]
+                    [ label []
+                        [ input
+                            [ onCheck SetDisplayRoles
+                            , type_ "checkbox"
+                            ]
+                            []
+                        , text " Display roles"
+                          -- TODO i18n
+                        ]
+                    ]
+               ]
         )
 
 
