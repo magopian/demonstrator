@@ -24,7 +24,7 @@ function setupWaterfallPort (app) {
     // TODO Do not hardcode currency
     return result + ' €'
   }
-  function renderWaterfall (options) {
+  function renderWaterfall (data) {
     var waterfallSelector = '#waterfall'
     var waterfallElement = document.querySelector(waterfallSelector)
     if (waterfallElement) {
@@ -32,24 +32,24 @@ function setupWaterfallPort (app) {
       if (svgElement) {
         svgElement.parentNode.removeChild(svgElement)
       }
-      var defaultOptions = {
+      waterfallChart({ // eslint-disable-line no-undef
+        data: data,
         elementSelector: waterfallSelector,
         viewPort: {
           height: waterfallElement.clientWidth * 0.5,
           width: waterfallElement.clientWidth
         },
         yFormatter: yFormatter
-      }
-      waterfallChart(Object.assign(defaultOptions, options)) // eslint-disable-line no-undef
+      })
     }
   }
-  app.ports.renderWaterfall.subscribe(function (options) {
+  app.ports.renderWaterfall.subscribe(function (data) {
     window.onresize = function ( /* event */) {
-      renderWaterfall(options)
+      renderWaterfall(data)
     }
     // Use requestAnimationFrame to render the chart after the Elm view is rendered.
     requestAnimationFrame(function () {
-      renderWaterfall(options)
+      renderWaterfall(data)
     })
   })
 }

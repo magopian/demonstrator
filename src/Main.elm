@@ -192,15 +192,7 @@ update msg model =
                         data =
                             Ports.waterfallData simulateNode
                     in
-                        Ports.renderWaterfall
-                            { data = data
-                            , yMin = data |> List.map .value |> List.minimum |> Maybe.withDefault 0
-                            , yMax = data |> List.map .value |> List.maximum |> Maybe.withDefault 0
-                            , xLabel = ""
-                            , yLabel =
-                                "€"
-                                -- TODO Do not hardcode
-                            }
+                        Ports.renderWaterfall data
 
                 _ ->
                     Cmd.none

@@ -28,15 +28,6 @@ type alias WaterfallDataItem =
     }
 
 
-type alias WaterfallOptions =
-    { data : List WaterfallDataItem
-    , yMin : Float
-    , yMax : Float
-    , xLabel : String
-    , yLabel : String
-    }
-
-
 waterfallData : SimulateNode -> List WaterfallDataItem
 waterfallData (SimulateNode fields) =
     case List.firstNonZeroValue fields.values of
@@ -59,4 +50,4 @@ waterfallData (SimulateNode fields) =
                        ]
 
 
-port renderWaterfall : WaterfallOptions -> Cmd msg
+port renderWaterfall : List WaterfallDataItem -> Cmd msg
