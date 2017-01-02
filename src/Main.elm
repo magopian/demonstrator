@@ -234,17 +234,16 @@ update msg model =
                             _ ->
                                 []
 
-                    ( newDebounce, cmd ) =
-                        Debounce.push debounceConfig ( model.period, newIndividuals ) model.debounce
-
                     newModel =
                         { model
-                            | debounce = newDebounce
-                            , entitiesWebData =
+                            | entitiesWebData =
                                 webData
                                     |> RemoteData.mapError (Debug.log "model.entitiesWebData Failure")
                             , individuals = newIndividuals
                         }
+
+                    cmd =
+                        simulate ( model.period, newIndividuals )
                 in
                     ( newModel, cmd )
 
