@@ -70,13 +70,6 @@ initialModel =
 initialIndividuals : Dict String Entity -> List Individual
 initialIndividuals entities =
     let
-        salaireVariableName =
-            -- TODO Do not hardcode
-            "salaire_de_base"
-
-        initialSalaire =
-            ( salaireVariableName, FloatInputValue 0 )
-
         firstOrSecondRole : List Role -> Maybe Role
         firstOrSecondRole roles =
             roles
@@ -100,10 +93,20 @@ initialIndividuals entities =
                                         secondRole
                     )
     in
-        [ { inputValues = Dict.fromList [ initialSalaire ]
+        [ { inputValues =
+                Dict.fromList
+                    [ -- TODO Do not hardcode variable name
+                      ( "salaire_de_base", FloatInputValue 0 )
+                    , ( "statut_marital", EnumInputValue "1" )
+                    ]
           , roles = initialRoles entities List.head
           }
-        , { inputValues = Dict.fromList [ initialSalaire ]
+        , { inputValues =
+                Dict.fromList
+                    [ -- TODO Do not hardcode variable name
+                      ( "salaire_de_base", FloatInputValue 0 )
+                    , ( "statut_marital", EnumInputValue "1" )
+                    ]
           , roles = initialRoles entities firstOrSecondRole
           }
         ]
