@@ -639,16 +639,13 @@ viewFooter =
                 ]
             , p []
                 [ text "Designed and built with all the love in the world by "
-                , a [ href "https://twitter.com/mdo", target "_blank" ]
-                    [ text "@mdo" ]
-                , text " and "
-                , a [ href "https://twitter.com/fat", target "_blank" ]
-                    [ text "@fat" ]
+                , a [ href "https://twitter.com/ChristopheBenz", target "_blank" ]
+                    [ text "@ChristopheBenz" ]
                 , text ". Maintained by the "
-                , a [ href "https://github.com/orgs/twbs/people" ]
+                , a [ href "https://github.com/orgs/openfisca/people" ]
                     [ text "core team" ]
                 , text " with the help of "
-                , a [ href "https://github.com/twbs/bootstrap/graphs/contributors" ]
+                , a [ href "https://github.com/openfisca/openfisca-france/graphs/contributors" ]
                     [ text "our contributors" ]
                 , text "."
                 ]
