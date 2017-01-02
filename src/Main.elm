@@ -1,5 +1,6 @@
 module Main exposing (..)
 
+import Debounce exposing (Debounce)
 import Dict exposing (Dict)
 import Html exposing (..)
 import Html.Attributes exposing (..)
@@ -10,6 +11,8 @@ import ListHelpers as List
 import Ports
 import RemoteData exposing (RemoteData(..), WebData)
 import Requests
+import Task
+import Time
 import Types exposing (..)
 
 
@@ -35,6 +38,7 @@ main =
 
 type alias Model =
     { apiBaseUrl : String
+    , debounce : Debounce ( Period, List Individual )
     , displayDisclaimer : Bool
     , entitiesWebData : WebData (Dict String Entity)
     , individuals : List Individual
@@ -47,6 +51,7 @@ type alias Model =
 initialModel : Model
 initialModel =
     { apiBaseUrl = "//localhost:2000/api"
+    , debounce = Debounce.init
     , displayDisclaimer = True
     , entitiesWebData = NotAsked
     , individuals = []
@@ -139,6 +144,7 @@ init { apiBaseUrl, displayDisclaimer } =
             { initialModel
                 | apiBaseUrl = apiBaseUrl |> Maybe.withDefault initialModel.apiBaseUrl
                 , displayDisclaimer = displayDisclaimer |> Maybe.withDefault initialModel.displayDisclaimer
+                , entitiesWebData = Loading
                 , variablesWebData = Loading
             }
     in
@@ -151,12 +157,26 @@ init { apiBaseUrl, displayDisclaimer } =
 
 type Msg
     = CloseDisclaimer
+    | DebounceMsg Debounce.Msg
     | EntitiesResult (WebData (Dict String Entity))
     | ResetApplication
     | SetInputValue Int String InputValue
     | SetRole Int String String
+    | Simulate ( Period, List Individual )
     | SimulateResult (WebData SimulateNode)
     | VariablesResult (WebData VariablesResponse)
+
+
+debounceConfig : Debounce.Config Msg
+debounceConfig =
+    { strategy = Debounce.later (1 * Time.second)
+    , transform = DebounceMsg
+    }
+
+
+simulate : ( Period, List Individual ) -> Cmd Msg
+simulate pair =
+    Task.perform Simulate (Task.succeed pair)
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -181,11 +201,6 @@ update msg model =
 
                 _ ->
                     Cmd.none
-
-        simulateCmd individuals =
-            Requests.simulate model.apiBaseUrl individuals model.period
-                |> RemoteData.sendRequest
-                |> Cmd.map SimulateResult
     in
         case msg of
             CloseDisclaimer ->
@@ -204,6 +219,16 @@ update msg model =
                 in
                     newModel ! cmds
 
+            DebounceMsg msg ->
+                let
+                    ( debounce, cmd ) =
+                        Debounce.update debounceConfig (Debounce.takeLast simulate) msg model.debounce
+
+                    newModel =
+                        { model | debounce = debounce }
+                in
+                    ( newModel, cmd )
+
             EntitiesResult webData ->
                 let
                     newIndividuals =
@@ -214,19 +239,19 @@ update msg model =
                             _ ->
                                 []
 
+                    ( newDebounce, cmd ) =
+                        Debounce.push debounceConfig ( model.period, newIndividuals ) model.debounce
+
                     newModel =
                         { model
-                            | entitiesWebData =
+                            | debounce = newDebounce
+                            , entitiesWebData =
                                 webData
                                     |> RemoteData.mapError (Debug.log "model.entitiesWebData Failure")
                             , individuals = newIndividuals
-                            , simulateWebData = Loading
                         }
-
-                    cmds =
-                        [ simulateCmd newIndividuals ]
                 in
-                    newModel ! cmds
+                    ( newModel, cmd )
 
             ResetApplication ->
                 let
@@ -257,16 +282,16 @@ update msg model =
                                         individual
                                 )
 
+                    ( newDebounce, cmd ) =
+                        Debounce.push debounceConfig ( model.period, newIndividuals ) model.debounce
+
                     newModel =
                         { model
-                            | individuals = newIndividuals
-                            , simulateWebData = Loading
+                            | debounce = newDebounce
+                            , individuals = newIndividuals
                         }
-
-                    cmds =
-                        [ simulateCmd newIndividuals ]
                 in
-                    newModel ! cmds
+                    ( newModel, cmd )
 
             SetRole index entityId roleId ->
                 let
@@ -284,16 +309,28 @@ update msg model =
                                         individual
                                 )
 
+                    ( newDebounce, cmd ) =
+                        Debounce.push debounceConfig ( model.period, newIndividuals ) model.debounce
+
                     newModel =
                         { model
-                            | individuals = newIndividuals
-                            , simulateWebData = Loading
+                            | debounce = newDebounce
+                            , individuals = newIndividuals
                         }
-
-                    cmds =
-                        [ simulateCmd newIndividuals ]
                 in
-                    newModel ! cmds
+                    ( newModel, cmd )
+
+            Simulate ( period, individuals ) ->
+                let
+                    newModel =
+                        { model | simulateWebData = Loading }
+
+                    cmd =
+                        Requests.simulate model.apiBaseUrl individuals period
+                            |> RemoteData.sendRequest
+                            |> Cmd.map SimulateResult
+                in
+                    ( newModel, cmd )
 
             SimulateResult webData ->
                 let
