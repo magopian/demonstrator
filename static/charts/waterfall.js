@@ -73,9 +73,7 @@ function waterfallChart (options) {
     .text(function (d) {
       var sign = d.class === 'positive'
         ? '+'
-        : d.class === 'negative'
-          ? '-'
-          : '' // class === 'total'
+        : '' // class === 'total' or 'negative' (which already has a '-')
       return sign + ' ' + yFormatter(d.end - d.start)
     })
   bar.filter(function (d) { return d.class != 'total' }).append('line')
