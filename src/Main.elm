@@ -204,7 +204,7 @@ update msg model =
                 Success simulateNode ->
                     let
                         data =
-                            Ports.waterfallData model.axisIndex simulateNode
+                            Ports.waterfallData (valuesIndex model.axisIndex model.axisVariableName) simulateNode
                     in
                         Ports.renderWaterfall data
 
@@ -281,8 +281,7 @@ update msg model =
 
                     newModel =
                         { model
-                            | axisIndex = 0
-                            , axisVariableName =
+                            | axisVariableName =
                                 if bool then
                                     Just newAxisVariableName
                                 else
@@ -488,7 +487,10 @@ view model =
                                                     ]
 
                                                 Success simulateNode ->
-                                                    [ viewDecomposition model.axisIndex simulateNode ]
+                                                    [ viewDecomposition
+                                                        (valuesIndex model.axisIndex model.axisVariableName)
+                                                        simulateNode
+                                                    ]
                                             )
                                        ]
                                 )
@@ -508,13 +510,13 @@ view model =
 
 
 viewDecomposition : Int -> SimulateNode -> Html Msg
-viewDecomposition axisIndex simulateNode =
+viewDecomposition valuesIndex simulateNode =
     let
         viewSimulateNode : SimulateNode -> Html Msg
         viewSimulateNode (SimulateNode fields) =
             div []
                 (case
-                    List.getAt axisIndex fields.values
+                    List.getAt valuesIndex fields.values
                         |> Maybe.andThen
                             (\value ->
                                 if value == 0 then

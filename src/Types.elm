@@ -153,6 +153,16 @@ type alias SimulateNodeFields =
     }
 
 
+valuesIndex : Int -> Maybe String -> Int
+valuesIndex axisIndex axisVariableName =
+    case axisVariableName of
+        Nothing ->
+            0
+
+        Just _ ->
+            axisIndex
+
+
 
 -- VARIABLES
 
