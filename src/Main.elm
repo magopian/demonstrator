@@ -938,12 +938,7 @@ viewNavBar =
                 [ ul [ class "nav navbar-nav" ]
                     []
                 , ul [ class "nav navbar-nav navbar-right" ]
-                    [ li []
-                        [ a [ href "https://www.openfisca.fr/" ]
-                            -- TODO Add to program flags
-                            [ text "Retour à l'accueil" ]
-                        ]
-                    , li [ class "visible-xs-block" ]
+                    [ li [ class "visible-xs-block" ]
                         [ a [ href "http://stats.data.gouv.fr/index.php?idSite=4" ]
                             -- TODO Add to program flags
                             [ text "Statistiques du site" ]
