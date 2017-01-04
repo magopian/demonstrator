@@ -11,6 +11,7 @@ import List.Extra as List
 import Ports
 import RemoteData exposing (RemoteData(..), WebData)
 import Requests
+import Response
 import Task
 import Time
 import Types exposing (..)
@@ -200,103 +201,68 @@ update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     let
         renderWaterfallCmd webData =
-            case webData of
-                Success simulateNode ->
-                    let
-                        data =
-                            Ports.waterfallData (valuesIndex model.axisIndex model.axisVariableName) simulateNode
-                    in
-                        Ports.renderWaterfall data
-
-                _ ->
-                    Cmd.none
+            webData
+                |> RemoteData.map
+                    (\simulateNode ->
+                        Ports.waterfallData (valuesIndex model.axisIndex model.axisVariableName) simulateNode
+                            |> Ports.renderWaterfall
+                    )
+                |> RemoteData.withDefault Cmd.none
     in
         case msg of
             CloseDisclaimer ->
-                let
-                    newModel =
-                        { model | displayDisclaimer = False }
-
-                    localStorageCmd =
-                        Ports.writeToLocalStorage
+                { model | displayDisclaimer = False }
+                    ! [ Ports.writeToLocalStorage
                             { key = "display-disclaimer"
                             , value = Just (Encode.bool False)
                             }
-
-                    cmds =
-                        [ localStorageCmd, renderWaterfallCmd model.simulateWebData ]
-                in
-                    newModel ! cmds
+                      , renderWaterfallCmd model.simulateWebData
+                      ]
 
             DebounceMsg msg ->
-                let
-                    ( debounce, cmd ) =
-                        Debounce.update debounceConfig (Debounce.takeLast simulate) msg model.debounce
-
-                    newModel =
-                        { model | debounce = debounce }
-                in
-                    ( newModel, cmd )
+                Debounce.update debounceConfig (Debounce.takeLast simulate) msg model.debounce
+                    |> Response.mapModel (\childModel -> { model | debounce = childModel })
 
             EntitiesResult webData ->
                 let
                     newIndividuals =
-                        case webData of
-                            Success entities ->
-                                initialIndividuals entities
-
-                            _ ->
-                                []
-
-                    newModel =
-                        { model
-                            | entitiesWebData =
-                                webData
-                                    |> RemoteData.mapError (Debug.log "model.entitiesWebData Failure")
-                            , individuals = newIndividuals
-                        }
-
-                    cmd =
-                        simulate ( model.year, newIndividuals )
+                        webData
+                            |> RemoteData.map initialIndividuals
+                            |> RemoteData.withDefault model.individuals
                 in
-                    ( newModel, cmd )
+                    { model
+                        | entitiesWebData =
+                            webData
+                                |> RemoteData.mapError (Debug.log "model.entitiesWebData Failure")
+                        , individuals = newIndividuals
+                    }
+                        ! [ simulate ( model.year, newIndividuals ) ]
 
             ResetApplication ->
-                let
-                    localStorageCmd =
-                        Ports.writeToLocalStorage
-                            { key = "display-disclaimer"
-                            , value = Nothing
-                            }
-
-                    cmds =
-                        localStorageCmd :: initialCmds model.apiBaseUrl
-                in
-                    initialModel ! cmds
+                initialModel
+                    ! (Ports.writeToLocalStorage
+                        { key = "display-disclaimer"
+                        , value = Nothing
+                        }
+                        :: initialCmds model.apiBaseUrl
+                      )
 
             SetAxis newAxisVariableName bool ->
-                let
-                    ( newDebounce, cmd ) =
-                        Debounce.push debounceConfig ( model.year, model.individuals ) model.debounce
-
-                    newModel =
-                        { model
-                            | axisVariableName =
-                                if bool then
-                                    Just newAxisVariableName
-                                else
-                                    Nothing
-                            , debounce = newDebounce
-                        }
-                in
-                    ( newModel, cmd )
+                Debounce.push debounceConfig ( model.year, model.individuals ) model.debounce
+                    |> Response.mapModel (\childModel -> { model | debounce = childModel })
+                    |> Response.mapModel
+                        (\model ->
+                            { model
+                                | axisVariableName =
+                                    if bool then
+                                        Just newAxisVariableName
+                                    else
+                                        Nothing
+                            }
+                        )
 
             SetDisplayRoles bool ->
-                let
-                    newModel =
-                        { model | displayRoles = bool }
-                in
-                    ( newModel, Cmd.none )
+                { model | displayRoles = bool } ! []
 
             SetInputValue index variableName inputValue ->
                 let
@@ -313,30 +279,15 @@ update msg model =
                                     else
                                         individual
                                 )
-
-                    ( newDebounce, cmd ) =
-                        Debounce.push debounceConfig ( model.year, newIndividuals ) model.debounce
-
-                    newModel =
-                        { model
-                            | debounce = newDebounce
-                            , individuals = newIndividuals
-                        }
                 in
-                    ( newModel, cmd )
+                    Debounce.push debounceConfig ( model.year, newIndividuals ) model.debounce
+                        |> Response.mapModel (\childModel -> { model | debounce = childModel })
+                        |> Response.mapModel (\model -> { model | individuals = newIndividuals })
 
             SetYear newYear ->
-                let
-                    ( newDebounce, cmd ) =
-                        Debounce.push debounceConfig ( newYear, model.individuals ) model.debounce
-
-                    newModel =
-                        { model
-                            | debounce = newDebounce
-                            , year = newYear
-                        }
-                in
-                    ( newModel, cmd )
+                Debounce.push debounceConfig ( newYear, model.individuals ) model.debounce
+                    |> Response.mapModel (\childModel -> { model | debounce = childModel })
+                    |> Response.mapModel (\model -> { model | year = newYear })
 
             SetRole index entityId roleId ->
                 let
@@ -353,35 +304,18 @@ update msg model =
                                     else
                                         individual
                                 )
-
-                    ( newDebounce, cmd ) =
-                        Debounce.push debounceConfig ( model.year, newIndividuals ) model.debounce
-
-                    newModel =
-                        { model
-                            | debounce = newDebounce
-                            , individuals = newIndividuals
-                        }
                 in
-                    ( newModel, cmd )
+                    Debounce.push debounceConfig ( model.year, newIndividuals ) model.debounce
+                        |> Response.mapModel (\childModel -> { model | debounce = childModel })
+                        |> Response.mapModel (\model -> { model | individuals = newIndividuals })
 
             SetWaterfallIndex index ->
-                let
-                    newModel =
-                        { model | axisIndex = index }
-
-                    cmd =
-                        renderWaterfallCmd model.simulateWebData
-                in
-                    ( newModel, cmd )
+                { model | axisIndex = index }
+                    ! [ renderWaterfallCmd model.simulateWebData ]
 
             Simulate ( year, individuals ) ->
-                let
-                    newModel =
-                        { model | simulateWebData = Loading }
-
-                    cmd =
-                        Requests.simulate model.apiBaseUrl
+                { model | simulateWebData = Loading }
+                    ! [ Requests.simulate model.apiBaseUrl
                             individuals
                             year
                             model.axisCount
@@ -390,33 +324,23 @@ update msg model =
                             model.axisVariableName
                             |> RemoteData.sendRequest
                             |> Cmd.map SimulateResult
-                in
-                    ( newModel, cmd )
+                      ]
 
             SimulateResult webData ->
-                let
-                    newModel =
-                        { model
-                            | simulateWebData =
-                                webData
-                                    |> RemoteData.mapError (Debug.log "model.simulateWebData Failure")
-                        }
-
-                    cmd =
-                        renderWaterfallCmd webData
-                in
-                    ( newModel, cmd )
+                { model
+                    | simulateWebData =
+                        webData
+                            |> RemoteData.mapError (Debug.log "model.simulateWebData Failure")
+                }
+                    ! [ renderWaterfallCmd webData ]
 
             VariablesResult webData ->
-                let
-                    newModel =
-                        { model
-                            | variablesWebData =
-                                webData
-                                    |> RemoteData.mapError (Debug.log "model.variablesWebData Failure")
-                        }
-                in
-                    ( newModel, Cmd.none )
+                { model
+                    | variablesWebData =
+                        webData
+                            |> RemoteData.mapError (Debug.log "model.variablesWebData Failure")
+                }
+                    ! []
 
 
 
