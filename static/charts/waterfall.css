@@ -35,4 +35,5 @@ Colors based on Bootstrap: http://getbootstrap.com/css/#less-variables-colors
 .axis line {
   fill: none;
   stroke: black;
+  shape-rendering: crispEdges;
 }
