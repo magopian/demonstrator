@@ -236,7 +236,11 @@ update msg model =
                                 |> RemoteData.mapError (Debug.log "model.entitiesWebData Failure")
                         , individuals = newIndividuals
                     }
-                        ! [ simulate ( model.year, newIndividuals ) ]
+                        ! [ if RemoteData.isSuccess webData then
+                                simulate ( model.year, newIndividuals )
+                            else
+                                Cmd.none
+                          ]
 
             ResetApplication ->
                 initialModel
