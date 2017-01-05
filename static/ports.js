@@ -15,41 +15,41 @@ function setupLocalStoragePort (app) {
 
 // eslint-disable-next-line no-unused-vars
 function setupWaterfallPort (app) {
-  function yFormatter (n) {
-    n = Math.round(n)
-    var result = n
-    if (Math.abs(n) > 999) {
-      result = Math.round(n / 1000) + 'K'
-    }
-    // TODO Do not hardcode currency
-    return result + ' €'
-  }
-  function renderWaterfall (data) {
-    var waterfallSelector = '#waterfall'
-    var waterfallElement = document.querySelector(waterfallSelector)
-    if (waterfallElement) {
-      var svgElement = waterfallElement.querySelector('svg')
-      if (svgElement) {
-        svgElement.parentNode.removeChild(svgElement)
+  var update
+  function mountOrUpdateWaterfall (data) {
+    var containerSelector = '#waterfall'
+    var containerElement = document.querySelector(containerSelector)
+    if (containerElement) {
+      function getViewPort () {
+        return {
+          height: containerElement.clientWidth * 0.5,
+          width: containerElement.clientWidth
+        }
       }
-      waterfallChart({ // eslint-disable-line no-undef
-        data: data,
-        elementSelector: waterfallSelector,
-        viewPort: {
-          height: waterfallElement.clientWidth * 0.5,
-          width: waterfallElement.clientWidth
-        },
-        yFormatter: yFormatter
-      })
+      var svgElement = containerElement.querySelector('svg')
+      if (svgElement) {
+        if (update) {
+          update({
+            data: data,
+            viewPort: getViewPort()
+          })
+        }
+      } else {
+        update = waterfallChart({ // eslint-disable-line no-undef
+          containerSelector: containerSelector,
+          data: data,
+          viewPort: getViewPort()
+        })
+      }
     }
   }
   app.ports.renderWaterfall.subscribe(function (data) {
     window.onresize = function ( /* event */) {
-      renderWaterfall(data)
+      mountOrUpdateWaterfall(data)
     }
     // Use requestAnimationFrame to render the chart after the Elm view is rendered.
     requestAnimationFrame(function () {
-      renderWaterfall(data)
+      mountOrUpdateWaterfall(data)
     })
   })
 }
