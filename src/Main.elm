@@ -314,7 +314,10 @@ update msg model =
                     ! [ renderWaterfallCmd model.simulateWebData ]
 
             Simulate ( year, individuals ) ->
-                { model | simulateWebData = Loading }
+                -- Do not set to Loading to be able to display previous data.
+                -- See https://github.com/krisajenkins/remotedata/issues/9
+                -- { model | simulateWebData = Loading }
+                model
                     ! [ Requests.simulate model.apiBaseUrl
                             individuals
                             year
