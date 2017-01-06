@@ -18,3 +18,11 @@ and open http://localhost:2025/index.html
 
     npm install
     npm run lint
+
+## Production deploy
+
+```
+./deploy.sh
+```
+
+and follow the instructions printed last.
