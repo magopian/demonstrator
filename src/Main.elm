@@ -104,7 +104,7 @@ initialIndividuals entities =
                 Dict.fromList
                     [ -- TODO Do not hardcode variable name
                       ( "salaire_de_base", FloatInputValue 0 )
-                    , ( "statut_marital", EnumInputValue "1" )
+                      -- , ( "statut_marital", EnumInputValue "1" )
                     ]
           , roles = initialRoles entities List.head
           }
@@ -112,7 +112,7 @@ initialIndividuals entities =
                 Dict.fromList
                     [ -- TODO Do not hardcode variable name
                       ( "salaire_de_base", FloatInputValue 0 )
-                    , ( "statut_marital", EnumInputValue "1" )
+                      -- , ( "statut_marital", EnumInputValue "1" )
                     ]
           , roles = initialRoles entities firstOrSecondRole
           }
