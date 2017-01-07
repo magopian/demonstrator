@@ -755,6 +755,7 @@ viewInputValue model individualIndex variableName variableLabel inputValue =
                         [ input
                             [ Html.Attributes.max (model.axisCount - 1 |> toString)
                             , Html.Attributes.min "0"
+                              -- TODO Use Html.Extra.Event
                             , onInput (SetWaterfallIndex << (String.toInt >> Result.withDefault 0))
                             , type_ "range"
                             , value (toString model.axisIndex)
