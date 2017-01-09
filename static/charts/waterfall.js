@@ -38,6 +38,16 @@ function waterfallChart (options) {
 
   var formatNumber = d3.format('.0s')
 
+  function barText (d) {
+    var delta = d.end - d.start
+    var sign = d.class === 'positive'
+      ? '+'
+      : '' // class === 'total' or 'negative' (which already renders '-')
+    return delta === 0
+      ? ''
+      : sign + ' ' + formatNumber(delta)
+  }
+
   var chart = d3.select(containerSelector).append('svg')
     .attr('width', viewPort.width)
     .attr('height', viewPort.height)
@@ -82,12 +92,7 @@ function waterfallChart (options) {
       .attr('height', function (d) { return Math.abs(y(d.start) - y(d.end)) })
       .attr('y', function (d) { return y(Math.max(d.start, d.end)) })
     gEnter.append('text')
-      .text(function (d) {
-        var sign = d.class === 'positive'
-          ? '+'
-          : '' // class === 'total' or 'negative' (which already renders '-')
-        return sign + ' ' + formatNumber(d.end - d.start)
-      })
+      .text(barText)
       .attr('x', function ( /* d */) { return x.bandwidth() / 2 })
       .transition()
       .attr('dy', function (d) { return (d.class === 'negative' ? '-' : '') + '.75em' })
@@ -109,12 +114,7 @@ function waterfallChart (options) {
       .attr('width', x.bandwidth())
       .attr('y', function (d) { return y(Math.max(d.start, d.end)) })
     bar.select('text')
-      .text(function (d) {
-        var sign = d.class === 'positive'
-          ? '+'
-          : '' // class === 'total' or 'negative' (which already renders '-')
-        return sign + ' ' + formatNumber(d.end - d.start)
-      })
+      .text(barText)
       .transition()
       .attr('dy', function (d) { return (d.class === 'negative' ? '-' : '') + '.75em' })
       .attr('x', function ( /* d */) { return x.bandwidth() / 2 })
