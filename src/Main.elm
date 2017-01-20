@@ -17,8 +17,8 @@ import Types exposing (..)
 
 
 type alias Flags =
-    { apiBaseUrl : Maybe String
-    , displayDisclaimer : Maybe Bool
+    { apiBaseUrl : String
+    , displayDisclaimer : Bool
     }
 
 
@@ -162,8 +162,8 @@ init { apiBaseUrl, displayDisclaimer } =
     let
         newModel =
             { initialModel
-                | apiBaseUrl = apiBaseUrl |> Maybe.withDefault initialModel.apiBaseUrl
-                , displayDisclaimer = displayDisclaimer |> Maybe.withDefault initialModel.displayDisclaimer
+                | apiBaseUrl = apiBaseUrl
+                , displayDisclaimer = displayDisclaimer
                 , entitiesWebData = Loading
                 , variablesWebData = Loading
             }

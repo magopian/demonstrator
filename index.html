@@ -27,11 +27,12 @@
     <script src="/static/ports.js"></script>
     <script src="/_compile/src/Main.elm"></script>
     <script>
-        var apiBaseUrl = null;
-        // var apiBaseUrl = "https://api.openfisca.fr/api";
+        var apiBaseUrl = "http://localhost:2000/api";
         // var apiBaseUrl = "http://localhost:2001/api";
         var displayDisclaimer = window.localStorage.getItem("display-disclaimer")
-        if (displayDisclaimer) {
+        if (displayDisclaimer === null) {
+            displayDisclaimer = true
+        } else {
             displayDisclaimer = JSON.parse(displayDisclaimer)
         }
         var flags = {
