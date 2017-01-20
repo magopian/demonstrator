@@ -4,17 +4,6 @@ import Dict exposing (Dict)
 import List.Extra as List
 
 
--- HELPERS
-
-
-find : (a -> Bool) -> List a -> Maybe a
-find f xs =
-    xs
-        |> List.filter f
-        |> List.head
-
-
-
 -- INDIVIDUALS
 
 
@@ -64,12 +53,12 @@ findEntity entityId entities =
     -- A simple `Dict.get` does not the job: we want to find an entity by its "plural-or-key".
     entities
         |> Dict.values
-        |> find (\entity -> pluralOrKey entity == entityId)
+        |> List.find (\entity -> pluralOrKey entity == entityId)
 
 
 findRole : String -> List Role -> Maybe Role
 findRole roleId roles =
-    find (\role -> pluralOrKey role == roleId) roles
+    List.find (\role -> pluralOrKey role == roleId) roles
 
 
 pluralOrKey : { a | key : String, plural : String } -> String
@@ -128,6 +117,51 @@ groupEntities individuals =
 
 
 
+-- AXES
+
+
+type alias Axis =
+    { count : Int
+    , individualIndex : Int
+    , max : Float
+    , min : Float
+    , variableName : VariableName
+    , selectedIndex : Int
+    }
+
+
+axisValue : Axis -> Float
+axisValue axis =
+    ((toFloat axis.selectedIndex) * axis.max) / (axis.count - 1 |> toFloat)
+
+
+getValue : List Float -> List Axis -> Maybe Float
+getValue values axes =
+    let
+        index =
+            axes
+                |> List.map .selectedIndex
+                -- TODO Really take into account selected indexes when multiple axes
+                |>
+                    List.head
+                |> Maybe.withDefault 0
+    in
+        List.getAt index values
+            |> Maybe.andThen
+                (\value ->
+                    if value == 0 then
+                        Nothing
+                    else
+                        Just value
+                )
+
+
+findAxis : Int -> VariableName -> List Axis -> Maybe Axis
+findAxis individualIndex variableName axes =
+    List.find (\axis -> axis.individualIndex == individualIndex && axis.variableName == variableName) axes
+
+
+
 -- PERIODS
 
 
@@ -147,20 +181,12 @@ type alias SimulateNodeFields =
     { children : List SimulateNode
     , code : String
     , color : ( Int, Int, Int )
-    , name : String
+    , name :
+        -- Not really a VariableName (could be a decomposition node which does not correspond to a variable)
+        String
     , shortName : String
     , values : List Float
     }
-
-
-valuesIndex : Int -> Maybe String -> Int
-valuesIndex axisIndex axisVariableName =
-    case axisVariableName of
-        Nothing ->
-            0
-
-        Just _ ->
-            axisIndex
 
 
 
@@ -247,7 +273,7 @@ variableCommonFields variable =
             x
 
 
-variableLabel : Dict String Variable -> String -> String
+variableLabel : Dict String Variable -> VariableName -> String
 variableLabel variables variableName =
     variables
         |> Dict.get variableName

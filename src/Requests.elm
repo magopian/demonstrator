@@ -11,6 +11,7 @@ import Types exposing (..)
 -- CONSTANTS
 
 
+nbYearsPadding : Int
 nbYearsPadding =
     5
 
@@ -74,36 +75,23 @@ encodeInputValue inputValue =
             Encode.int int
 
 
-encodeTestCase : List Individual -> Period -> Maybe VariableName -> Encode.Value
-encodeTestCase individuals year axisVariableName =
+encodeTestCase : List Individual -> Period -> List Axis -> Encode.Value
+encodeTestCase individuals year axes =
     Encode.object
         (( "individus"
            -- TODO Do not hardcode it
          , Encode.list
             (individuals
                 |> List.indexedMap
-                    (\index { inputValues } ->
+                    (\individualIndex { inputValues } ->
                         Encode.object
-                            (( "id", Encode.string (individualId index) )
+                            (( "id", Encode.string (individualId individualIndex) )
                                 :: (inputValues
                                         |> Dict.toList
                                         |> List.filterMap
                                             (\( variableName, inputValue ) ->
-                                                let
-                                                    isAxisVariable =
-                                                        case axisVariableName of
-                                                            Nothing ->
-                                                                False
-
-                                                            Just axisVariableName ->
-                                                                axisVariableName == variableName
-
-                                                    encodedInputValue =
-                                                        encodeInputValue inputValue
-                                                in
-                                                    if index == 0 && isAxisVariable then
-                                                        Nothing
-                                                    else
+                                                case findAxis individualIndex variableName axes of
+                                                    Nothing ->
                                                         Just
                                                             ( variableName
                                                             , Encode.object
@@ -111,11 +99,14 @@ encodeTestCase individuals year axisVariableName =
                                                                     |> List.map
                                                                         (\n ->
                                                                             ( year - n |> toString
-                                                                            , encodedInputValue
+                                                                            , encodeInputValue inputValue
                                                                             )
                                                                         )
                                                                 )
                                                             )
+
+                                                    Just _ ->
+                                                        Nothing
                                             )
                                    )
                             )
@@ -274,16 +265,8 @@ entities baseUrl =
     Http.get (baseUrl ++ "/2/entities") (field "entities" (dict entityDecoder))
 
 
-simulate :
-    String
-    -> List Individual
-    -> Period
-    -> Int
-    -> Float
-    -> Float
-    -> Maybe VariableName
-    -> Http.Request SimulateNode
-simulate baseUrl individuals year axisCount axisMax axisMin axisVariableName =
+simulate : String -> List Individual -> Period -> List Axis -> Http.Request SimulateNode
+simulate baseUrl individuals year axes =
     let
         body =
             Encode.object
@@ -291,20 +274,19 @@ simulate baseUrl individuals year axisCount axisMax axisMin axisVariableName =
                   , Encode.list
                         [ Encode.object
                             ([ ( "period", Encode.int year )
-                             , ( "test_case", encodeTestCase individuals year axisVariableName )
+                             , ( "test_case", encodeTestCase individuals year axes )
                              ]
-                                ++ (case axisVariableName of
-                                        Nothing ->
-                                            []
-
-                                        Just axisVariableName ->
-                                            [ ( "axes"
-                                              , Encode.list
+                                ++ (axes
+                                        |> List.map
+                                            (\axis ->
+                                                ( "axes"
+                                                , Encode.list
                                                     [ Encode.object
-                                                        [ ( "count", Encode.int axisCount )
-                                                        , ( "max", Encode.float axisMax )
-                                                        , ( "min", Encode.float axisMin )
-                                                        , ( "name", Encode.string axisVariableName )
+                                                        [ ( "count", Encode.int axis.count )
+                                                        , ( "index", Encode.int axis.individualIndex )
+                                                        , ( "max", Encode.float axis.max )
+                                                        , ( "min", Encode.float axis.min )
+                                                        , ( "name", Encode.string axis.variableName )
                                                           -- , ( "period"
                                                           --   , Encode.string
                                                           --         (toString (year - nbYearsPadding + 1)
@@ -314,8 +296,8 @@ simulate baseUrl individuals year axisCount axisMax axisMin axisVariableName =
                                                           --   )
                                                         ]
                                                     ]
-                                              )
-                                            ]
+                                                )
+                                            )
                                    )
                             )
                         ]

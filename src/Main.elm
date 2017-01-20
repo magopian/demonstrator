@@ -39,11 +39,7 @@ main =
 
 type alias Model =
     { apiBaseUrl : String
-    , axisCount : Int
-    , axisIndex : Int
-    , axisMax : Float
-    , axisMin : Float
-    , axisVariableName : Maybe String
+    , axes : List Axis
     , debounce : Debounce ( Period, List Individual )
     , displayDisclaimer : Bool
     , displayRoles : Bool
@@ -58,11 +54,22 @@ type alias Model =
 initialModel : Model
 initialModel =
     { apiBaseUrl = "//localhost:2000/api"
-    , axisCount = 50
-    , axisIndex = 0
-    , axisMax = 100000
-    , axisMin = 0
-    , axisVariableName = Just "salaire_de_base"
+    , axes =
+        [ { count = 50
+          , individualIndex = 0
+          , max = 100000
+          , min = 0
+          , selectedIndex = 0
+          , variableName = "salaire_de_base"
+          }
+          -- , { count = 50
+          --   , individualIndex = 1
+          --   , max = 100000
+          --   , min = 0
+          --   , selectedIndex = 0
+          --   , variableName = "salaire_de_base"
+          --   }
+        ]
     , debounce = Debounce.init
     , displayDisclaimer = True
     , displayRoles = False
@@ -174,14 +181,14 @@ type Msg
     | DebounceMsg Debounce.Msg
     | EntitiesResult (WebData (Dict String Entity))
     | ResetApplication
-    | SetAxis VariableName Bool
+    | SetAxisSelectedIndex Int VariableName Int
     | SetDisplayRoles Bool
     | SetInputValue Int String InputValue
     | SetRole Int String String
-    | SetWaterfallIndex Int
     | SetYear Int
     | Simulate ( Period, List Individual )
     | SimulateResult (WebData SimulateNode)
+    | ToggleAxis Int VariableName Bool
     | VariablesResult (WebData VariablesResponse)
 
 
@@ -204,7 +211,7 @@ update msg model =
             webData
                 |> RemoteData.map
                     (\simulateNode ->
-                        Ports.waterfallData (valuesIndex model.axisIndex model.axisVariableName) simulateNode
+                        Ports.waterfallData model.axes simulateNode
                             |> Ports.renderWaterfall
                     )
                 |> RemoteData.withDefault Cmd.none
@@ -251,19 +258,23 @@ update msg model =
                         :: initialCmds model.apiBaseUrl
                       )
 
-            SetAxis newAxisVariableName bool ->
-                Debounce.push debounceConfig ( model.year, model.individuals ) model.debounce
-                    |> Response.mapModel (\childModel -> { model | debounce = childModel })
-                    |> Response.mapModel
-                        (\model ->
-                            { model
-                                | axisVariableName =
-                                    if bool then
-                                        Just newAxisVariableName
+            SetAxisSelectedIndex individualIndex variableName selectedIndex ->
+                let
+                    newAxes =
+                        model.axes
+                            |> List.map
+                                (\axis ->
+                                    if
+                                        (axis.individualIndex == individualIndex)
+                                            && (axis.variableName == variableName)
+                                    then
+                                        { axis | selectedIndex = selectedIndex }
                                     else
-                                        Nothing
-                            }
-                        )
+                                        axis
+                                )
+                in
+                    { model | axes = newAxes }
+                        ! [ renderWaterfallCmd model.simulateWebData ]
 
             SetDisplayRoles bool ->
                 { model | displayRoles = bool } ! []
@@ -288,11 +299,6 @@ update msg model =
                         |> Response.mapModel (\childModel -> { model | debounce = childModel })
                         |> Response.mapModel (\model -> { model | individuals = newIndividuals })
 
-            SetYear newYear ->
-                Debounce.push debounceConfig ( newYear, model.individuals ) model.debounce
-                    |> Response.mapModel (\childModel -> { model | debounce = childModel })
-                    |> Response.mapModel (\model -> { model | year = newYear })
-
             SetRole index entityId roleId ->
                 let
                     newIndividuals =
@@ -313,22 +319,17 @@ update msg model =
                         |> Response.mapModel (\childModel -> { model | debounce = childModel })
                         |> Response.mapModel (\model -> { model | individuals = newIndividuals })
 
-            SetWaterfallIndex index ->
-                { model | axisIndex = index }
-                    ! [ renderWaterfallCmd model.simulateWebData ]
+            SetYear newYear ->
+                Debounce.push debounceConfig ( newYear, model.individuals ) model.debounce
+                    |> Response.mapModel (\childModel -> { model | debounce = childModel })
+                    |> Response.mapModel (\model -> { model | year = newYear })
 
             Simulate ( year, individuals ) ->
                 -- Do not set to Loading to be able to display previous data.
                 -- See https://github.com/krisajenkins/remotedata/issues/9
                 -- { model | simulateWebData = Loading }
                 model
-                    ! [ Requests.simulate model.apiBaseUrl
-                            individuals
-                            year
-                            model.axisCount
-                            model.axisMax
-                            model.axisMin
-                            model.axisVariableName
+                    ! [ Requests.simulate model.apiBaseUrl individuals year model.axes
                             |> RemoteData.sendRequest
                             |> Cmd.map SimulateResult
                       ]
@@ -340,6 +341,41 @@ update msg model =
                             |> RemoteData.mapError (Debug.log "model.simulateWebData Failure")
                 }
                     ! [ renderWaterfallCmd webData ]
+
+            ToggleAxis individualIndex variableName checkboxChecked ->
+                Debounce.push debounceConfig ( model.year, model.individuals ) model.debounce
+                    |> Response.mapModel (\childModel -> { model | debounce = childModel })
+                    |> Response.mapModel
+                        (\model ->
+                            let
+                                newAxes =
+                                    model.axes
+                                        |> List.filterMap
+                                            (\axis ->
+                                                if
+                                                    (axis.individualIndex == individualIndex)
+                                                        && (axis.variableName == variableName)
+                                                then
+                                                    Nothing
+                                                else
+                                                    Just axis
+                                            )
+                                        |> List.append
+                                            (if checkboxChecked then
+                                                [ { count = 50
+                                                  , individualIndex = individualIndex
+                                                  , max = 100000
+                                                  , min = 0
+                                                  , selectedIndex = 0
+                                                  , variableName = variableName
+                                                  }
+                                                ]
+                                             else
+                                                []
+                                            )
+                            in
+                                { model | axes = newAxes }
+                        )
 
             VariablesResult webData ->
                 { model
@@ -418,10 +454,7 @@ view model =
                                                     ]
 
                                                 Success simulateNode ->
-                                                    [ viewDecomposition
-                                                        (valuesIndex model.axisIndex model.axisVariableName)
-                                                        simulateNode
-                                                    ]
+                                                    [ viewDecomposition model.axes simulateNode ]
                                             )
                                        ]
                                 )
@@ -440,22 +473,13 @@ view model =
         ]
 
 
-viewDecomposition : Int -> SimulateNode -> Html Msg
-viewDecomposition valuesIndex simulateNode =
+viewDecomposition : List Axis -> SimulateNode -> Html Msg
+viewDecomposition axes simulateNode =
     let
         viewSimulateNode : SimulateNode -> Html Msg
         viewSimulateNode (SimulateNode fields) =
             div []
-                (case
-                    List.getAt valuesIndex fields.values
-                        |> Maybe.andThen
-                            (\value ->
-                                if value == 0 then
-                                    Nothing
-                                else
-                                    Just value
-                            )
-                 of
+                (case getValue fields.values axes of
                     Nothing ->
                         []
 
@@ -696,7 +720,8 @@ viewIndividuals model entities variablesResponse =
                             , type_ "checkbox"
                             ]
                             []
-                        , text " Display roles"
+                        , text " "
+                        , text "Display roles"
                           -- TODO i18n
                         ]
                     ]
@@ -719,24 +744,22 @@ viewIndividuals model entities variablesResponse =
 viewInputValue : Model -> Int -> VariableName -> String -> InputValue -> Html Msg
 viewInputValue model individualIndex variableName variableLabel inputValue =
     let
-        isAxisVariable =
-            case model.axisVariableName of
-                Nothing ->
-                    False
-
-                Just axisVariableName ->
-                    axisVariableName == variableName
+        axis =
+            findAxis individualIndex variableName model.axes
 
         controlVariationCheckbox =
-            label []
-                [ input
-                    [ checked isAxisVariable
-                    , onCheck (SetAxis variableName)
-                    , type_ "checkbox"
+            div [ class "checkbox" ]
+                [ label []
+                    [ input
+                        [ checked (axis /= Nothing)
+                        , onCheck (ToggleAxis individualIndex variableName)
+                        , type_ "checkbox"
+                        ]
+                        []
+                    , text " "
+                    , text "Control variation"
+                      -- TODO i18n
                     ]
-                    []
-                , text " Control variation"
-                  -- TODO i18n
                 ]
     in
         div [ class "form-group" ]
@@ -750,94 +773,92 @@ viewInputValue model individualIndex variableName variableLabel inputValue =
                     ]
                     [ text (truncatedLabel ++ "...") ]
              ]
-                ++ (if individualIndex == 0 && isAxisVariable then
-                        -- TODO Do not hardcode variable name
-                        [ input
-                            [ Html.Attributes.max (model.axisCount - 1 |> toString)
-                            , Html.Attributes.min "0"
-                              -- TODO Use Html.Extra.Event
-                            , onInput (SetWaterfallIndex << (String.toInt >> Result.withDefault 0))
-                            , type_ "range"
-                            , value (toString model.axisIndex)
-                            ]
-                            []
-                          -- TODO Do not hardcode (see axis in Requests.elm)
-                        , samp []
-                            [ text
-                                (toString
-                                    (((toFloat model.axisIndex) * model.axisMax)
-                                        / (model.axisCount - 1 |> toFloat)
+                ++ (case inputValue of
+                        BoolInputValue bool ->
+                            [ text "TODO" ]
+
+                        DateInputValue string ->
+                            [ text "TODO" ]
+
+                        EnumInputValue string ->
+                            [ text "TODO" ]
+
+                        FloatInputValue float ->
+                            (case axis of
+                                Nothing ->
+                                    [ input
+                                        [ class "form-control"
+                                        , onInput
+                                            (\str ->
+                                                let
+                                                    newInputValue =
+                                                        if String.isEmpty str then
+                                                            FloatInputValue 0
+                                                        else
+                                                            case String.toFloat str of
+                                                                Ok newFloat ->
+                                                                    FloatInputValue newFloat
+
+                                                                Err _ ->
+                                                                    FloatInputValue float
+                                                in
+                                                    SetInputValue individualIndex variableName newInputValue
+                                            )
+                                        , step "any"
+                                        , type_ "number"
+                                        , value (toString float)
+                                        ]
+                                        []
+                                    ]
+
+                                Just axis ->
+                                    [ input
+                                        [ class "form-control"
+                                        , Html.Attributes.max (axis.count - 1 |> toString)
+                                        , Html.Attributes.min "0"
+                                          -- TODO Use Html.Extra.Event
+                                        , onInput
+                                            (SetAxisSelectedIndex individualIndex variableName
+                                                << (String.toInt >> Result.withDefault 0)
+                                            )
+                                        , type_ "range"
+                                        , value (toString axis.selectedIndex)
+                                        ]
+                                        []
+                                    , samp [] [ text (toString (axisValue axis)) ]
+                                    ]
+                            )
+                                ++ (if individualIndex == 0 then
+                                        [ controlVariationCheckbox ]
+                                    else
+                                        []
+                                   )
+
+                        IntInputValue int ->
+                            [ input
+                                [ class "form-control"
+                                , onInput
+                                    (\str ->
+                                        let
+                                            newInputValue =
+                                                if String.isEmpty str then
+                                                    IntInputValue 0
+                                                else
+                                                    case String.toInt str of
+                                                        Ok newInt ->
+                                                            IntInputValue newInt
+
+                                                        Err _ ->
+                                                            IntInputValue int
+                                        in
+                                            SetInputValue individualIndex variableName newInputValue
                                     )
-                                )
-                            ]
-                        , div [] [ controlVariationCheckbox ]
-                        ]
-                    else
-                        case inputValue of
-                            BoolInputValue bool ->
-                                [ text "TODO" ]
-
-                            DateInputValue string ->
-                                [ text "TODO" ]
-
-                            EnumInputValue string ->
-                                [ text "TODO" ]
-
-                            FloatInputValue float ->
-                                input
-                                    [ class "form-control"
-                                    , onInput
-                                        (\str ->
-                                            let
-                                                newInputValue =
-                                                    if String.isEmpty str then
-                                                        FloatInputValue 0
-                                                    else
-                                                        case String.toFloat str of
-                                                            Ok newFloat ->
-                                                                FloatInputValue newFloat
-
-                                                            Err _ ->
-                                                                FloatInputValue float
-                                            in
-                                                SetInputValue individualIndex variableName newInputValue
-                                        )
-                                    , step "any"
-                                    , type_ "number"
-                                    , value (toString float)
-                                    ]
-                                    []
-                                    :: (if individualIndex == 0 then
-                                            [ controlVariationCheckbox ]
-                                        else
-                                            []
-                                       )
-
-                            IntInputValue int ->
-                                [ input
-                                    [ class "form-control"
-                                    , onInput
-                                        (\str ->
-                                            let
-                                                newInputValue =
-                                                    if String.isEmpty str then
-                                                        IntInputValue 0
-                                                    else
-                                                        case String.toInt str of
-                                                            Ok newInt ->
-                                                                IntInputValue newInt
-
-                                                            Err _ ->
-                                                                IntInputValue int
-                                            in
-                                                SetInputValue individualIndex variableName newInputValue
-                                        )
-                                    , step "1"
-                                    , type_ "number"
-                                    , value (toString int)
-                                    ]
-                                    []
+                                , step "1"
+                                , type_ "number"
+                                , value (toString int)
                                 ]
+                                []
+                            ]
                    )
             )
 

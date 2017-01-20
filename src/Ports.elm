@@ -28,18 +28,9 @@ type alias WaterfallDataItem =
     }
 
 
-waterfallData : Int -> SimulateNode -> List WaterfallDataItem
-waterfallData waterfallIndex (SimulateNode fields) =
-    case
-        List.getAt waterfallIndex fields.values
-            |> Maybe.andThen
-                (\value ->
-                    if value == 0 then
-                        Nothing
-                    else
-                        Just value
-                )
-    of
+waterfallData : List Axis -> SimulateNode -> List WaterfallDataItem
+waterfallData axes (SimulateNode fields) =
+    case getValue fields.values axes of
         Nothing ->
             []
 
@@ -51,7 +42,7 @@ waterfallData waterfallIndex (SimulateNode fields) =
                   }
                 ]
             else
-                (List.concatMap (waterfallData waterfallIndex) fields.children)
+                (List.concatMap (waterfallData axes) fields.children)
                     ++ [ { isSubtotal = True
                          , name = fields.shortName
                          , value = value
