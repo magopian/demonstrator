@@ -63,7 +63,7 @@ function waterfallChart (options) {
 
     var x = d3.scaleBand()
       .domain(data.map(getProperty('name')))
-      .range([0, width])
+      .rangeRound([0, width])
       .padding(barPadding)
     var y = d3.scaleLinear()
       .domain([0, d3.max(data, getProperty('end'))])
