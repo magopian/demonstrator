@@ -7,7 +7,6 @@ import Html.Attributes exposing (..)
 import Html.Events exposing (..)
 import Json.Decode as Decode
 import Json.Encode as Encode
-import List.Extra as List
 import Ports
 import RemoteData exposing (RemoteData(..), WebData)
 import Requests
