@@ -1,7 +1,6 @@
 port module Ports exposing (..)
 
 import Json.Encode as Encode
-import List.Extra as List
 import Types exposing (..)
 
 
