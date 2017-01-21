@@ -54,21 +54,23 @@ initialModel : Model
 initialModel =
     { apiBaseUrl = "//localhost:2000/api"
     , axes =
-        [ { count = 50
-          , individualIndex = 0
-          , max = 100000
-          , min = 0
-          , selectedIndex = 0
-          , variableName = "salaire_de_base"
-          }
-          -- , { count = 50
-          --   , individualIndex = 1
-          --   , max = 100000
-          --   , min = 0
-          --   , selectedIndex = 0
-          --   , variableName = "salaire_de_base"
-          --   }
-        ]
+        []
+        -- [
+        --   { count = 50
+        --   , individualIndex = 0
+        --   , max = 100000
+        --   , min = 0
+        --   , selectedIndex = 0
+        --   , variableName = "salaire_de_base"
+        --   }
+        --   , { count = 50
+        --     , individualIndex = 1
+        --     , max = 100000
+        --     , min = 0
+        --     , selectedIndex = 0
+        --     , variableName = "salaire_de_base"
+        --     }
+        -- ]
     , debounce = Debounce.init
     , displayDisclaimer = True
     , displayRoles = False
@@ -827,7 +829,8 @@ viewInputValue model individualIndex variableName variableLabel inputValue =
                                     , samp [] [ text (toString (axisValue axis)) ]
                                     ]
                             )
-                                ++ (if individualIndex == 0 then
+                                ++ (if individualIndex == 0 && variableName == "salaire_de_base" then
+                                        -- TODO Do not hardcode "salaire_de_base"
                                         [ controlVariationCheckbox ]
                                     else
                                         []
