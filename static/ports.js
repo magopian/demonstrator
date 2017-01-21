@@ -21,8 +21,9 @@ function setupWaterfallPort (app) {
     var containerElement = document.querySelector(containerSelector)
     if (containerElement) {
       function getViewPort () {
+        var aspectRatio = 16 / 9
         return {
-          height: containerElement.clientWidth * 0.5,
+          height: containerElement.clientWidth * (1 / aspectRatio),
           width: containerElement.clientWidth
         }
       }
