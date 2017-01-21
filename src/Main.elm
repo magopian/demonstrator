@@ -7,6 +7,7 @@ import Html.Attributes exposing (..)
 import Html.Events exposing (..)
 import Json.Decode as Decode
 import Json.Encode as Encode
+import List.Extra as List
 import Ports
 import RemoteData exposing (RemoteData(..), WebData)
 import Requests
@@ -44,6 +45,7 @@ type alias Model =
     , displayRoles : Bool
     , entitiesWebData : WebData (Dict String Entity)
     , individuals : List Individual
+    , readyToAddVariableName : Dict Int VariableName
     , simulateWebData : WebData SimulateNode
     , year : Period
     , variablesWebData : WebData VariablesResponse
@@ -76,6 +78,7 @@ initialModel =
     , displayRoles = False
     , entitiesWebData = NotAsked
     , individuals = []
+    , readyToAddVariableName = Dict.empty
     , simulateWebData = NotAsked
     , year = 2015
     , variablesWebData = NotAsked
@@ -178,7 +181,9 @@ init { apiBaseUrl, displayDisclaimer } =
 
 
 type Msg
-    = CloseDisclaimer
+    = AddVariable Int
+    | AddVariableInput Int String
+    | CloseDisclaimer
     | DebounceMsg Debounce.Msg
     | EntitiesResult (WebData (Dict String Entity))
     | ResetApplication
@@ -218,6 +223,37 @@ update msg model =
                 |> RemoteData.withDefault Cmd.none
     in
         case msg of
+            AddVariable individualIndex ->
+                (case Dict.get individualIndex model.readyToAddVariableName of
+                    Nothing ->
+                        model
+
+                    Just readyToAddVariableName ->
+                        let
+                            newIndividuals =
+                                model.individuals
+                                    |> List.updateAt individualIndex
+                                        (\individual ->
+                                            { individual
+                                                | inputValues =
+                                                    Dict.insert
+                                                        readyToAddVariableName
+                                                        (FloatInputValue 0)
+                                                        individual.inputValues
+                                            }
+                                        )
+                                    |> Maybe.withDefault model.individuals
+                        in
+                            { model
+                                | individuals = newIndividuals
+                                , readyToAddVariableName = Dict.remove individualIndex model.readyToAddVariableName
+                            }
+                )
+                    ! []
+
+            AddVariableInput individualIndex str ->
+                { model | readyToAddVariableName = Dict.insert individualIndex str model.readyToAddVariableName } ! []
+
             CloseDisclaimer ->
                 { model | displayDisclaimer = False }
                     ! [ Ports.writeToLocalStorage
@@ -662,7 +698,7 @@ viewIndividual model entities variablesResponse individualIndex individual =
             , ul [ class "list-group" ]
                 ([ li [ class "list-group-item" ]
                     [ div []
-                        (individual.inputValues
+                        ((individual.inputValues
                             |> Dict.toList
                             |> List.map
                                 (\( variableName, inputValue ) ->
@@ -672,6 +708,52 @@ viewIndividual model entities variablesResponse individualIndex individual =
                                     in
                                         viewInputValue model individualIndex variableName label inputValue
                                 )
+                         )
+                            ++ [ div [ class "input-group" ]
+                                    [ input
+                                        [ class "form-control"
+                                        , onInput (AddVariableInput individualIndex)
+                                        , placeholder "Name of the variable to add (example: statut_marital)"
+                                          -- TODO i18n
+                                        , type_ "text"
+                                        , value
+                                            (Dict.get individualIndex model.readyToAddVariableName
+                                                |> Maybe.withDefault ""
+                                            )
+                                        ]
+                                        []
+                                    , span [ class "input-group-btn" ]
+                                        [ button
+                                            [ class "btn btn-default"
+                                            , disabled
+                                                (case Dict.get individualIndex model.readyToAddVariableName of
+                                                    Nothing ->
+                                                        -- Disable if no value is typed for this individual.
+                                                        True
+
+                                                    Just readyToAddVariableName ->
+                                                        model.variablesWebData
+                                                            |> RemoteData.map
+                                                                (\variablesResponse ->
+                                                                    case Dict.get readyToAddVariableName variablesResponse.variables of
+                                                                        Nothing ->
+                                                                            -- Disable if the value typed does not correspond to a valid variable name.
+                                                                            -- TODO Disable if the value typed corresponds to an already used variable.
+                                                                            True
+
+                                                                        Just _ ->
+                                                                            False
+                                                                )
+                                                            |> RemoteData.withDefault True
+                                                )
+                                            , onClick (AddVariable individualIndex)
+                                            ]
+                                            [ text "Add variable"
+                                              -- TODO i18n
+                                            ]
+                                        ]
+                                    ]
+                               ]
                         )
                     ]
                  ]
