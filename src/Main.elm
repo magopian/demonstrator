@@ -232,7 +232,7 @@ update msg model =
                         let
                             newIndividuals =
                                 model.individuals
-                                    |> List.updateAt individualIndex
+                                    |> List.updateIfIndex ((==) individualIndex)
                                         (\individual ->
                                             { individual
                                                 | inputValues =
@@ -242,7 +242,6 @@ update msg model =
                                                         individual.inputValues
                                             }
                                         )
-                                    |> Maybe.withDefault model.individuals
                         in
                             { model
                                 | individuals = newIndividuals
@@ -316,40 +315,34 @@ update msg model =
             SetDisplayRoles bool ->
                 { model | displayRoles = bool } ! []
 
-            SetInputValue index variableName inputValue ->
+            SetInputValue individualIndex variableName inputValue ->
                 let
                     newIndividuals =
                         model.individuals
-                            |> List.indexedMap
-                                (\index1 individual ->
-                                    if index == index1 then
-                                        let
-                                            newInputValues =
-                                                Dict.insert variableName inputValue individual.inputValues
-                                        in
-                                            { individual | inputValues = newInputValues }
-                                    else
-                                        individual
+                            |> List.updateIfIndex ((==) individualIndex)
+                                (\individual ->
+                                    let
+                                        newInputValues =
+                                            Dict.insert variableName inputValue individual.inputValues
+                                    in
+                                        { individual | inputValues = newInputValues }
                                 )
                 in
                     Debounce.push debounceConfig ( model.year, newIndividuals ) model.debounce
                         |> Response.mapModel (\childModel -> { model | debounce = childModel })
                         |> Response.mapModel (\model -> { model | individuals = newIndividuals })
 
-            SetRole index entityId roleId ->
+            SetRole individualIndex entityId roleId ->
                 let
                     newIndividuals =
                         model.individuals
-                            |> List.indexedMap
-                                (\index1 individual ->
-                                    if index == index1 then
-                                        let
-                                            newRoles =
-                                                Dict.insert entityId roleId individual.roles
-                                        in
-                                            { individual | roles = newRoles }
-                                    else
-                                        individual
+                            |> List.updateIfIndex ((==) individualIndex)
+                                (\individual ->
+                                    let
+                                        newRoles =
+                                            Dict.insert entityId roleId individual.roles
+                                    in
+                                        { individual | roles = newRoles }
                                 )
                 in
                     Debounce.push debounceConfig ( model.year, newIndividuals ) model.debounce
