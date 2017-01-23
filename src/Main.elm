@@ -34,6 +34,16 @@ main =
 
 
 
+-- CONSTANTS
+
+
+salaireVariableName : String
+salaireVariableName =
+    -- TODO Do not hardcode "salaire_de_base"
+    "salaire_de_base"
+
+
+
 -- MODEL
 
 
@@ -45,7 +55,7 @@ type alias Model =
     , displayRoles : Bool
     , entitiesWebData : WebData Entities
     , individuals : List Individual
-    , readyToAddVariableName : Dict Int VariableName
+    , nextVariables : Dict IndividualIndex VariableName
     , simulateWebData : WebData SimulateNode
     , year : Period
     , variablesWebData : WebData VariablesResponse
@@ -63,14 +73,14 @@ initialModel =
         --   , max = 100000
         --   , min = 0
         --   , selectedIndex = 0
-        --   , variableName = "salaire_de_base"
+        --   , variableName = salaireVariableName
         --   }
         --   , { count = 50
         --     , individualIndex = 1
         --     , max = 100000
         --     , min = 0
         --     , selectedIndex = 0
-        --     , variableName = "salaire_de_base"
+        --     , variableName = salaireVariableName
         --     }
         -- ]
     , debounce = Debounce.init
@@ -78,73 +88,23 @@ initialModel =
     , displayRoles = False
     , entitiesWebData = NotAsked
     , individuals = []
-    , readyToAddVariableName = Dict.empty
+    , nextVariables = Dict.empty
     , simulateWebData = NotAsked
     , year = 2015
     , variablesWebData = NotAsked
     }
 
 
-initialIndividuals : Entities -> List Individual
-initialIndividuals entities =
-    let
-        firstOrSecondRole : List Role -> Maybe Role
-        firstOrSecondRole roles =
-            roles
-                |> List.head
-                |> Maybe.andThen
-                    (\firstRole ->
-                        let
-                            secondRole =
-                                roles
-                                    |> List.drop 1
-                                    |> List.head
-                        in
-                            case firstRole.max of
-                                Nothing ->
-                                    Just firstRole
-
-                                Just firstRoleMax ->
-                                    if firstRoleMax > 1 then
-                                        Just firstRole
-                                    else
-                                        secondRole
-                    )
-    in
-        [ { inputValues =
-                Dict.fromList
-                    [ -- TODO Do not hardcode "salaire_de_base"
-                      ( "salaire_de_base", FloatInputValue 0 )
-                      -- , ( "statut_marital", EnumInputValue "1" )
-                    ]
-          , roles = initialRoles entities.groups List.head
-          }
-        , { inputValues =
-                Dict.fromList
-                    [ -- TODO Do not hardcode "salaire_de_base"
-                      ( "salaire_de_base", FloatInputValue 0 )
-                      -- , ( "statut_marital", EnumInputValue "1" )
-                    ]
-          , roles = initialRoles entities.groups firstOrSecondRole
-          }
-        ]
-
-
-initialRoles : List GroupEntity -> (List Role -> Maybe Role) -> Dict EntityKey RoleKey
-initialRoles groupEntities getter =
-    groupEntities
-        |> List.filterMap
-            (\entity ->
-                entity.roles
-                    |> getter
-                    |> Maybe.map
-                        (\role ->
-                            ( entity.keyPlural |> Maybe.withDefault entity.keySingular
-                            , role.keyPlural |> Maybe.withDefault role.keySingular
-                            )
-                        )
-            )
-        |> Dict.fromList
+initialIndividuals : List Individual -> Entities -> List Individual
+initialIndividuals individuals entities =
+    [ { inputValues =
+            Dict.fromList
+                [ ( salaireVariableName, FloatInputValue 0 )
+                  -- , ( "statut_marital", EnumInputValue "1" )
+                ]
+      , roles = nextRoles individuals entities.groups
+      }
+    ]
 
 
 initialCmds : String -> List (Cmd Msg)
@@ -182,20 +142,22 @@ init { apiBaseUrl, displayDisclaimer } =
 
 
 type Msg
-    = AddVariable Int
-    | AddVariableInput Int String
+    = AddIndividual Entities
+    | AddVariable IndividualIndex
+    | AddVariableInput IndividualIndex String
     | CloseDisclaimer
     | DebounceMsg Debounce.Msg
     | EntitiesResult (WebData Entities)
+    | RemoveIndividual IndividualIndex
     | ResetApplication
-    | SetAxisSelectedIndex Int VariableName Int
+    | SetAxisSelectedIndex IndividualIndex VariableName Int
     | SetDisplayRoles Bool
-    | SetInputValue Int String InputValue
-    | SetRole Int String String
+    | SetInputValue IndividualIndex String InputValue
+    | SetRole IndividualIndex String String
     | SetYear Int
     | Simulate ( Period, List Individual )
     | SimulateResult (WebData SimulateNode)
-    | ToggleAxis Int VariableName Bool
+    | ToggleAxis IndividualIndex VariableName Bool
     | VariablesResult (WebData VariablesResponse)
 
 
@@ -224,16 +186,28 @@ update msg model =
                 |> RemoteData.withDefault Cmd.none
     in
         case msg of
+            AddIndividual entities ->
+                let
+                    newIndividuals =
+                        model.individuals
+                            ++ [ { inputValues = Dict.fromList [ ( salaireVariableName, FloatInputValue 0 ) ]
+                                 , roles = nextRoles model.individuals entities.groups
+                                 }
+                               ]
+                in
+                    { model | individuals = newIndividuals }
+                        ! [ simulate ( model.year, newIndividuals ) ]
+
             AddVariable individualIndex ->
-                (case Dict.get individualIndex model.readyToAddVariableName of
+                (case Dict.get individualIndex model.nextVariables of
                     Nothing ->
                         model
 
-                    Just readyToAddVariableName ->
+                    Just nextVariables ->
                         model.variablesWebData
                             |> RemoteData.map
                                 (\variablesResponse ->
-                                    case Dict.get readyToAddVariableName variablesResponse.variables of
+                                    case Dict.get nextVariables variablesResponse.variables of
                                         Nothing ->
                                             model
 
@@ -246,7 +220,7 @@ update msg model =
                                                                 { individual
                                                                     | inputValues =
                                                                         Dict.insert
-                                                                            readyToAddVariableName
+                                                                            nextVariables
                                                                             (inputValueFromVariable variable)
                                                                             individual.inputValues
                                                                 }
@@ -254,10 +228,10 @@ update msg model =
                                             in
                                                 { model
                                                     | individuals = newIndividuals
-                                                    , readyToAddVariableName =
+                                                    , nextVariables =
                                                         Dict.remove
                                                             individualIndex
-                                                            model.readyToAddVariableName
+                                                            model.nextVariables
                                                 }
                                 )
                             |> RemoteData.withDefault model
@@ -265,7 +239,7 @@ update msg model =
                     ! []
 
             AddVariableInput individualIndex str ->
-                { model | readyToAddVariableName = Dict.insert individualIndex str model.readyToAddVariableName } ! []
+                { model | nextVariables = Dict.insert individualIndex str model.nextVariables } ! []
 
             CloseDisclaimer ->
                 { model | displayDisclaimer = False }
@@ -284,7 +258,7 @@ update msg model =
                 let
                     newIndividuals =
                         webData
-                            |> RemoteData.map initialIndividuals
+                            |> RemoteData.map (initialIndividuals model.individuals)
                             |> RemoteData.withDefault model.individuals
                 in
                     { model
@@ -298,6 +272,14 @@ update msg model =
                             else
                                 Cmd.none
                           ]
+
+            RemoveIndividual individualIndex ->
+                let
+                    newIndividuals =
+                        model.individuals |> List.removeAt individualIndex
+                in
+                    { model | individuals = newIndividuals }
+                        ! [ simulate ( model.year, newIndividuals ) ]
 
             ResetApplication ->
                 initialModel
@@ -570,7 +552,7 @@ viewDisclaimer =
             , type_ "button"
             ]
             [ text "×" ]
-          -- TODO Translate in english
+          -- TODO i18n (all below)
         , h4 [] [ text "À propos de cet outil" ]
         , ul []
             [ li [] [ text "OpenFisca est un simulateur socio-fiscal en cours de développement." ]
@@ -665,7 +647,7 @@ viewFooter =
         ]
 
 
-viewIndividual : Model -> Entities -> VariablesResponse -> Int -> Individual -> Html Msg
+viewIndividual : Model -> Entities -> VariablesResponse -> IndividualIndex -> Individual -> Html Msg
 viewIndividual model entities variablesResponse individualIndex individual =
     let
         viewIndividualRoles roles =
@@ -674,10 +656,12 @@ viewIndividual model entities variablesResponse individualIndex individual =
                     |> Dict.toList
                     |> List.filterMap
                         (\( entityKey, roleKey ) ->
-                            findGroupEntity entityKey entities.groups
+                            entities.groups
+                                |> List.find (\entity -> entity.key == entityKey)
                                 |> Maybe.andThen
                                     (\entity ->
-                                        findRole roleKey entity.roles
+                                        entity.roles
+                                            |> List.find (\role -> role.key == roleKey)
                                             |> Maybe.map (viewIndividualRole entities individualIndex entityKey entity)
                                     )
                         )
@@ -710,7 +694,7 @@ viewIndividual model entities variablesResponse individualIndex individual =
                                           -- TODO i18n
                                         , type_ "text"
                                         , value
-                                            (Dict.get individualIndex model.readyToAddVariableName
+                                            (Dict.get individualIndex model.nextVariables
                                                 |> Maybe.withDefault ""
                                             )
                                         ]
@@ -719,16 +703,16 @@ viewIndividual model entities variablesResponse individualIndex individual =
                                         [ button
                                             [ class "btn btn-default"
                                             , disabled
-                                                (case Dict.get individualIndex model.readyToAddVariableName of
+                                                (case Dict.get individualIndex model.nextVariables of
                                                     Nothing ->
                                                         -- Disable if no value is typed for this individual.
                                                         True
 
-                                                    Just readyToAddVariableName ->
+                                                    Just nextVariables ->
                                                         model.variablesWebData
                                                             |> RemoteData.map
                                                                 (\variablesResponse ->
-                                                                    case Dict.get readyToAddVariableName variablesResponse.variables of
+                                                                    case Dict.get nextVariables variablesResponse.variables of
                                                                         Nothing ->
                                                                             -- Disable if the value typed does not correspond to a valid variable name.
                                                                             -- TODO Disable if the value typed corresponds to an already used variable.
@@ -757,11 +741,29 @@ viewIndividual model entities variablesResponse individualIndex individual =
                         else
                             []
                        )
+                    ++ (let
+                            isLastRemainingIndividual =
+                                individualIndex == 0 && List.length model.individuals == 1
+                        in
+                            if isLastRemainingIndividual then
+                                []
+                            else
+                                [ li [ class "list-group-item clearfix" ]
+                                    [ button
+                                        [ class "btn btn-default pull-right"
+                                        , onClick (RemoveIndividual individualIndex)
+                                        ]
+                                        [ text "Remove individual"
+                                          -- TODO i18n
+                                        ]
+                                    ]
+                                ]
+                       )
                 )
             ]
 
 
-viewIndividualRole : Entities -> Int -> EntityKey -> GroupEntity -> Role -> Html Msg
+viewIndividualRole : Entities -> IndividualIndex -> EntityKey -> GroupEntity -> Role -> Html Msg
 viewIndividualRole entities individualIndex entityKey entity role =
     div [ class "form-group" ]
         [ label [] [ text entity.label ]
@@ -774,8 +776,8 @@ viewIndividualRole entities individualIndex entityKey entity role =
                 |> List.map
                     (\role1 ->
                         option
-                            [ selected (role1.keySingular == role.keySingular)
-                            , value (role1.keyPlural |> Maybe.withDefault role1.keySingular)
+                            [ selected (role1.key == role.key)
+                            , value (role1.key)
                             ]
                             [ text role1.label ]
                     )
@@ -789,7 +791,14 @@ viewIndividuals model entities variablesResponse =
         ((model.individuals
             |> List.indexedMap (viewIndividual model entities variablesResponse)
          )
-            ++ [ div [ class "checkbox" ]
+            ++ [ button
+                    [ class "btn btn-default"
+                    , onClick (AddIndividual entities)
+                    ]
+                    [ text "Add an individual"
+                      -- TODO i18n
+                    ]
+               , div [ class "checkbox" ]
                     [ label []
                         [ input
                             [ onCheck SetDisplayRoles
@@ -817,7 +826,7 @@ viewIndividuals model entities variablesResponse =
         )
 
 
-viewInputValue : Model -> Int -> VariableName -> String -> InputValue -> Html Msg
+viewInputValue : Model -> IndividualIndex -> VariableName -> String -> InputValue -> Html Msg
 viewInputValue model individualIndex variableName variableLabel inputValue =
     let
         axis =
@@ -904,8 +913,7 @@ viewInputValue model individualIndex variableName variableLabel inputValue =
                                     , samp [] [ text (toString (axisValue axis)) ]
                                     ]
                             )
-                                ++ (if individualIndex == 0 && variableName == "salaire_de_base" then
-                                        -- TODO Do not hardcode "salaire_de_base"
+                                ++ (if individualIndex == 0 && variableName == salaireVariableName then
                                         [ controlVariationCheckbox ]
                                     else
                                         []

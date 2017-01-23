@@ -2,6 +2,7 @@ module Types exposing (..)
 
 import Dict exposing (Dict)
 import List.Extra as List
+import Maybe.Extra as Maybe
 
 
 -- INDIVIDUALS
@@ -44,11 +45,15 @@ inputValueFromVariable variable =
             StringInputValue default
 
 
+type alias IndividualIndex =
+    Int
+
+
 type alias IndividualId =
     String
 
 
-individualId : Int -> IndividualId
+individualId : IndividualIndex -> IndividualId
 individualId index =
     "individual_" ++ (toString (index + 1))
 
@@ -62,11 +67,10 @@ type alias RoleKey =
 
 
 type alias Role =
-    { keyPlural : Maybe RoleKey
-    , keySingular : RoleKey
+    { key : RoleKey
     , label : String
     , max : Maybe Int
-    , subroles : List String
+    , subroles : Maybe (List String)
     }
 
 
@@ -75,15 +79,13 @@ type alias EntityKey =
 
 
 type alias IndividualEntity =
-    { keyPlural : EntityKey
-    , keySingular : EntityKey
+    { key : EntityKey
     , label : String
     }
 
 
 type alias GroupEntity =
-    { keyPlural : Maybe EntityKey
-    , keySingular : EntityKey
+    { key : EntityKey
     , label : String
     , roles : List Role
     }
@@ -95,37 +97,66 @@ type alias Entities =
     }
 
 
-findGroupEntity : EntityKey -> List GroupEntity -> Maybe GroupEntity
-findGroupEntity entityKey entities =
-    entities
-        |> List.find
-            (\entity ->
-                (entity.keyPlural
-                    |> Maybe.withDefault entity.keySingular
-                )
-                    == entityKey
-            )
+{-| The max number of individuals having a role is defined either:
+- by the `.max` field
+- by the length of the `.subroles` field
+-}
+roleMax : Role -> Maybe Int
+roleMax role =
+    role.max
+        |> Maybe.or (role.subroles |> Maybe.map List.length)
 
 
-findRole : RoleKey -> List Role -> Maybe Role
-findRole roleKey roles =
+{-| Find the next available role given an individual index, in a list of roles.
+
+For example (roles list is simplified):
+parents = {key = "parent", max = Just 2}
+enfants = {key = "enfant", max = Nothing}
+roles = [parents, enfants]
+nextRole [] roles = parents
+nextRole [x] roles = parents
+nextRole [x, y] roles = enfants
+nextRole [x, y, z] roles = enfants
+...
+-}
+nextRole : List Individual -> List Role -> Maybe Role
+nextRole individuals roles =
     roles
         |> List.find
             (\role ->
-                (role.keyPlural
-                    |> Maybe.withDefault role.keySingular
-                )
-                    == roleKey
+                let
+                    nbRolesFounds =
+                        individuals
+                            |> List.filterMap
+                                (\individual ->
+                                    individual.roles
+                                        |> Dict.toList
+                                        |> List.find (\( _, roleKey ) -> role.key == roleKey)
+                                )
+                            |> List.length
+                in
+                    case roleMax role of
+                        Nothing ->
+                            True
+
+                        Just max ->
+                            nbRolesFounds < max
             )
+
+
+nextRoles : List Individual -> List GroupEntity -> Dict EntityKey RoleKey
+nextRoles individuals groupEntities =
+    groupEntities
+        |> List.filterMap
+            (\entity ->
+                nextRole individuals entity.roles
+                    |> Maybe.map (\role -> ( entity.key, role.key ))
+            )
+        |> Dict.fromList
 
 
 
 -- GROUPED INDIVIDUALS (sub-part of a test-case)
--- type OneOrMany a
---     = One a
---     | Many (List a)
--- type alias GroupedIndividualIds =
---     Dict EntityKey (Dict RoleKey (OneOrMany IndividualId))
 
 
 type alias GroupedIndividualIds =
@@ -160,6 +191,13 @@ after =
               )
             ]
         )
+
+TODO Do not store a `List Individual` when max = 1 for example. Use OneOrMany perhaps, like so:
+type OneOrMany a
+    = One a
+    | Many (List a)
+type alias GroupedIndividualIds =
+    Dict EntityKey (Dict RoleKey (OneOrMany IndividualId))
 -}
 groupByEntityAndRole : List Individual -> Maybe GroupedIndividualIds
 groupByEntityAndRole individuals =
@@ -206,7 +244,7 @@ groupByEntityAndRole individuals =
 
 type alias Axis =
     { count : Int
-    , individualIndex : Int
+    , individualIndex : IndividualIndex
     , max : Float
     , min : Float
     , variableName : VariableName
@@ -240,7 +278,7 @@ getValue values axes =
                 )
 
 
-findAxis : Int -> VariableName -> List Axis -> Maybe Axis
+findAxis : IndividualIndex -> VariableName -> List Axis -> Maybe Axis
 findAxis individualIndex variableName axes =
     List.find (\axis -> axis.individualIndex == individualIndex && axis.variableName == variableName) axes
 

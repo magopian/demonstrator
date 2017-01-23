@@ -159,19 +159,34 @@ entityDecoder =
 
 groupEntityDecoder : Decoder GroupEntity
 groupEntityDecoder =
-    succeed GroupEntity
-        |: (maybe (field "plural" string))
-        |: (field "key" string)
-        |: (field "label" string)
-        |: (field "roles" (list roleDecoder))
+    keyFromPluralOrSingularDecoder
+        |> andThen
+            (\key ->
+                succeed (GroupEntity key)
+                    |: (field "label" string)
+                    |: (field "roles" (list roleDecoder))
+            )
 
 
 individualEntityDecoder : Decoder IndividualEntity
 individualEntityDecoder =
-    succeed IndividualEntity
-        |: (field "plural" string)
-        |: (field "key" string)
-        |: (field "label" string)
+    keyFromPluralOrSingularDecoder
+        |> andThen
+            (\key ->
+                succeed (IndividualEntity key)
+                    |: (field "label" string)
+            )
+
+
+keyFromPluralOrSingularDecoder : Decoder String
+keyFromPluralOrSingularDecoder =
+    map2 (,)
+        (field "key" string)
+        (maybe (field "plural" string))
+        |> map
+            (\( singular, plural ) ->
+                plural |> Maybe.withDefault singular
+            )
 
 
 roleDecoder : Decoder Role
@@ -181,12 +196,14 @@ roleDecoder =
     -- (optionalField "subroles" (dict string)
     --     |> map (Maybe.map Dict.values >> Maybe.withDefault [])
     -- )
-    succeed Role
-        |: (maybe (field "plural" string))
-        |: (field "key" string)
-        |: (field "label" string)
-        |: (maybe (field "max" int))
-        |: (field "subroles" (list string) |> withDefault [])
+    keyFromPluralOrSingularDecoder
+        |> andThen
+            (\key ->
+                succeed (Role key)
+                    |: (field "label" string)
+                    |: (maybe (field "max" int))
+                    |: (maybe (field "subroles" (list string)))
+            )
 
 
 simulateNodeDecoder : Decoder SimulateNode
