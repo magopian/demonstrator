@@ -3,7 +3,8 @@
 REV=$(git rev-parse HEAD)
 
 rm -rf dist
-elm-make src/Main.elm --warn --output=dist/main.js
+rm -rf elm-stuff/build-artifacts # To display all the warnings, do not keep old compilation results.
+elm make src/Main.elm --warn --output=dist/main.js
 cp -r static dist
 cp index.html dist
 
