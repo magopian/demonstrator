@@ -9,7 +9,7 @@ import List.Extra as List
 
 type alias Individual =
     { inputValues : Dict VariableName InputValue
-    , roles : Dict String String
+    , roles : Dict EntityKey RoleKey
     }
 
 
@@ -19,9 +19,36 @@ type InputValue
     | EnumInputValue String
     | FloatInputValue Float
     | IntInputValue Int
+    | StringInputValue String
 
 
-individualId : Int -> String
+inputValueFromVariable : Variable -> InputValue
+inputValueFromVariable variable =
+    case variable of
+        BoolVariable ( _, { default } ) ->
+            BoolInputValue default
+
+        DateVariable ( _, { default } ) ->
+            DateInputValue default
+
+        EnumVariable ( _, { default } ) ->
+            EnumInputValue default
+
+        FloatVariable ( _, { default } ) ->
+            FloatInputValue default
+
+        IntVariable ( _, { default } ) ->
+            IntInputValue default
+
+        StringVariable ( _, { default } ) ->
+            StringInputValue default
+
+
+type alias IndividualId =
+    String
+
+
+individualId : Int -> IndividualId
 individualId index =
     "individual_" ++ (toString (index + 1))
 
@@ -30,74 +57,131 @@ individualId index =
 -- ENTITIES
 
 
+type alias RoleKey =
+    String
+
+
 type alias Role =
-    { key : String
+    { keyPlural : Maybe RoleKey
+    , keySingular : RoleKey
     , label : String
     , max : Maybe Int
-    , plural : String
     , subroles : List String
     }
 
 
-type alias Entity =
-    { isPersonsEntity : Bool
-    , key : String
+type alias EntityKey =
+    String
+
+
+type alias IndividualEntity =
+    { keyPlural : EntityKey
+    , keySingular : EntityKey
     , label : String
-    , plural : String
+    }
+
+
+type alias GroupEntity =
+    { keyPlural : Maybe EntityKey
+    , keySingular : EntityKey
+    , label : String
     , roles : List Role
     }
 
 
-findEntity : String -> Dict String Entity -> Maybe Entity
-findEntity entityId entities =
-    -- A simple `Dict.get` does not the job: we want to find an entity by its "plural-or-key".
+type alias Entities =
+    { individual : IndividualEntity
+    , groups : List GroupEntity
+    }
+
+
+findGroupEntity : EntityKey -> List GroupEntity -> Maybe GroupEntity
+findGroupEntity entityKey entities =
     entities
-        |> Dict.values
-        |> List.find (\entity -> pluralOrKey entity == entityId)
+        |> List.find
+            (\entity ->
+                (entity.keyPlural
+                    |> Maybe.withDefault entity.keySingular
+                )
+                    == entityKey
+            )
 
 
-findRole : String -> List Role -> Maybe Role
-findRole roleId roles =
-    List.find (\role -> pluralOrKey role == roleId) roles
+findRole : RoleKey -> List Role -> Maybe Role
+findRole roleKey roles =
+    roles
+        |> List.find
+            (\role ->
+                (role.keyPlural
+                    |> Maybe.withDefault role.keySingular
+                )
+                    == roleKey
+            )
 
 
-pluralOrKey : { a | key : String, plural : String } -> String
-pluralOrKey record =
-    if String.isEmpty record.plural then
-        record.key
-    else
-        record.plural
+
+-- GROUPED INDIVIDUALS (sub-part of a test-case)
+-- type OneOrMany a
+--     = One a
+--     | Many (List a)
+-- type alias GroupedIndividualIds =
+--     Dict EntityKey (Dict RoleKey (OneOrMany IndividualId))
 
 
-
--- GROUP ENTITIES (sub-part of a test case)
-
-
-type alias GroupEntity =
-    Dict String (List String)
+type alias GroupedIndividualIds =
+    Dict EntityKey (Dict RoleKey (List IndividualId))
 
 
-groupEntities : List Individual -> Maybe (Dict String GroupEntity)
-groupEntities individuals =
+{-| Groups individuals by entity key then by role key.
+
+before =
+    [ Dict.fromList
+        [ ( "familles", Dict.fromList [ ( "parents", [ "individual_1" ] ) ] )
+        , ( "foyers_fiscaux", Dict.fromList [ ( "declarants", [ "individual_1" ] ) ] )
+        , ( "menages", Dict.fromList [ ( "personne_de_reference", [ "individual_1" ] ) ] )
+        ]
+    , Dict.fromList
+        [ ( "familles", Dict.fromList [ ( "parents", [ "individual_2" ] ) ] )
+        , ( "foyers_fiscaux", Dict.fromList [ ( "declarants", [ "individual_2" ] ) ] )
+        , ( "menages", Dict.fromList [ ( "conjoint", [ "individual_2" ] ) ] )
+        ]
+    ]
+
+after =
+    Just
+        (Dict.fromList
+            [ ( "familles", Dict.fromList [ ( "parents", [ "individual_1", "individual_2" ] ) ] )
+            , ( "foyers_fiscaux", Dict.fromList [ ( "declarants", [ "individual_1", "individual_2" ] ) ] )
+            , ( "menages"
+              , Dict.fromList
+                    [ ( "conjoint", [ "individual_2" ] )
+                    , ( "personne_de_reference", [ "individual_1" ] )
+                    ]
+              )
+            ]
+        )
+-}
+groupByEntityAndRole : List Individual -> Maybe GroupedIndividualIds
+groupByEntityAndRole individuals =
     let
-        mergeTestCases : Dict String GroupEntity -> Dict String GroupEntity -> Dict String GroupEntity
+        mergeTestCases : GroupedIndividualIds -> GroupedIndividualIds -> GroupedIndividualIds
         mergeTestCases testCase1 testCase2 =
             Dict.merge
                 Dict.insert
-                (\entityId roles1 roles2 individualAccu ->
-                    individualAccu |> Dict.insert entityId (mergeEntities roles1 roles2)
+                (\entityKey roles1 roles2 individualAccu ->
+                    individualAccu |> Dict.insert entityKey (mergeEntities roles1 roles2)
                 )
                 Dict.insert
                 testCase1
                 testCase2
                 Dict.empty
 
-        mergeEntities : Dict String (List String) -> Dict String (List String) -> Dict String (List String)
+        mergeEntities : Dict RoleKey (List IndividualId) -> Dict RoleKey (List IndividualId) -> Dict RoleKey (List IndividualId)
         mergeEntities entities1 entities2 =
             Dict.merge
                 Dict.insert
-                (\roleId individualIds1 individualIds2 entityAccu ->
-                    entityAccu |> Dict.insert roleId (individualIds1 ++ individualIds2)
+                (\roleKey individualIds1 individualIds2 entityAccu ->
+                    entityAccu |> Dict.insert roleKey (individualIds1 ++ individualIds2)
                 )
                 Dict.insert
                 entities1
@@ -109,8 +193,8 @@ groupEntities individuals =
                 (\index { roles } ->
                     roles
                         |> Dict.map
-                            (\entityId roleId ->
-                                Dict.singleton roleId [ individualId index ]
+                            (\_ roleKey ->
+                                Dict.singleton roleKey [ individualId index ]
                             )
                 )
             |> List.foldl1 mergeTestCases
@@ -198,13 +282,12 @@ type alias VariableName =
 
 
 type alias VariableCommonFields =
-    { entity : String
+    { entity : EntityKey
     , label : Maybe String
     , name : VariableName
     , sourceCode : String
     , sourceFilePath : String
     , startLineNumber : Int
-    , type_ : String
     }
 
 
@@ -247,33 +330,33 @@ type alias VariablesResponse =
     { countryPackageName : String
     , countryPackageVersion : String
     , currency : String
-    , variables : Dict String Variable
+    , variables : Dict VariableName Variable
     }
 
 
 variableCommonFields : Variable -> VariableCommonFields
 variableCommonFields variable =
     case variable of
-        (BoolVariable ( x, _ )) as variable ->
+        BoolVariable ( x, _ ) ->
             x
 
-        (DateVariable ( x, _ )) as variable ->
+        DateVariable ( x, _ ) ->
             x
 
-        (EnumVariable ( x, _ )) as variable ->
+        EnumVariable ( x, _ ) ->
             x
 
-        (FloatVariable ( x, _ )) as variable ->
+        FloatVariable ( x, _ ) ->
             x
 
-        (IntVariable ( x, _ )) as variable ->
+        IntVariable ( x, _ ) ->
             x
 
-        (StringVariable ( x, _ )) as variable ->
+        StringVariable ( x, _ ) ->
             x
 
 
-variableLabel : Dict String Variable -> VariableName -> String
+variableLabel : Dict VariableName Variable -> VariableName -> String
 variableLabel variables variableName =
     variables
         |> Dict.get variableName

@@ -43,7 +43,7 @@ type alias Model =
     , debounce : Debounce ( Period, List Individual )
     , displayDisclaimer : Bool
     , displayRoles : Bool
-    , entitiesWebData : WebData (Dict String Entity)
+    , entitiesWebData : WebData Entities
     , individuals : List Individual
     , readyToAddVariableName : Dict Int VariableName
     , simulateWebData : WebData SimulateNode
@@ -85,7 +85,7 @@ initialModel =
     }
 
 
-initialIndividuals : Dict String Entity -> List Individual
+initialIndividuals : Entities -> List Individual
 initialIndividuals entities =
     let
         firstOrSecondRole : List Role -> Maybe Role
@@ -113,35 +113,36 @@ initialIndividuals entities =
     in
         [ { inputValues =
                 Dict.fromList
-                    [ -- TODO Do not hardcode variable name
+                    [ -- TODO Do not hardcode "salaire_de_base"
                       ( "salaire_de_base", FloatInputValue 0 )
                       -- , ( "statut_marital", EnumInputValue "1" )
                     ]
-          , roles = initialRoles entities List.head
+          , roles = initialRoles entities.groups List.head
           }
         , { inputValues =
                 Dict.fromList
-                    [ -- TODO Do not hardcode variable name
+                    [ -- TODO Do not hardcode "salaire_de_base"
                       ( "salaire_de_base", FloatInputValue 0 )
                       -- , ( "statut_marital", EnumInputValue "1" )
                     ]
-          , roles = initialRoles entities firstOrSecondRole
+          , roles = initialRoles entities.groups firstOrSecondRole
           }
         ]
 
 
-initialRoles : Dict String Entity -> (List Role -> Maybe Role) -> Dict String String
-initialRoles entities getter =
-    entities
-        |> Dict.values
+initialRoles : List GroupEntity -> (List Role -> Maybe Role) -> Dict EntityKey RoleKey
+initialRoles groupEntities getter =
+    groupEntities
         |> List.filterMap
             (\entity ->
-                if entity.isPersonsEntity then
-                    Nothing
-                else
-                    entity.roles
-                        |> getter
-                        |> Maybe.map (\firstRole -> ( pluralOrKey entity, pluralOrKey firstRole ))
+                entity.roles
+                    |> getter
+                    |> Maybe.map
+                        (\role ->
+                            ( entity.keyPlural |> Maybe.withDefault entity.keySingular
+                            , role.keyPlural |> Maybe.withDefault role.keySingular
+                            )
+                        )
             )
         |> Dict.fromList
 
@@ -185,7 +186,7 @@ type Msg
     | AddVariableInput Int String
     | CloseDisclaimer
     | DebounceMsg Debounce.Msg
-    | EntitiesResult (WebData (Dict String Entity))
+    | EntitiesResult (WebData Entities)
     | ResetApplication
     | SetAxisSelectedIndex Int VariableName Int
     | SetDisplayRoles Bool
@@ -229,24 +230,37 @@ update msg model =
                         model
 
                     Just readyToAddVariableName ->
-                        let
-                            newIndividuals =
-                                model.individuals
-                                    |> List.updateIfIndex ((==) individualIndex)
-                                        (\individual ->
-                                            { individual
-                                                | inputValues =
-                                                    Dict.insert
-                                                        readyToAddVariableName
-                                                        (FloatInputValue 0)
-                                                        individual.inputValues
-                                            }
-                                        )
-                        in
-                            { model
-                                | individuals = newIndividuals
-                                , readyToAddVariableName = Dict.remove individualIndex model.readyToAddVariableName
-                            }
+                        model.variablesWebData
+                            |> RemoteData.map
+                                (\variablesResponse ->
+                                    case Dict.get readyToAddVariableName variablesResponse.variables of
+                                        Nothing ->
+                                            model
+
+                                        Just variable ->
+                                            let
+                                                newIndividuals =
+                                                    model.individuals
+                                                        |> List.updateIfIndex ((==) individualIndex)
+                                                            (\individual ->
+                                                                { individual
+                                                                    | inputValues =
+                                                                        Dict.insert
+                                                                            readyToAddVariableName
+                                                                            (inputValueFromVariable variable)
+                                                                            individual.inputValues
+                                                                }
+                                                            )
+                                            in
+                                                { model
+                                                    | individuals = newIndividuals
+                                                    , readyToAddVariableName =
+                                                        Dict.remove
+                                                            individualIndex
+                                                            model.readyToAddVariableName
+                                                }
+                                )
+                            |> RemoteData.withDefault model
                 )
                     ! []
 
@@ -332,7 +346,7 @@ update msg model =
                         |> Response.mapModel (\childModel -> { model | debounce = childModel })
                         |> Response.mapModel (\model -> { model | individuals = newIndividuals })
 
-            SetRole individualIndex entityId roleId ->
+            SetRole individualIndex entityKey roleKey ->
                 let
                     newIndividuals =
                         model.individuals
@@ -340,7 +354,7 @@ update msg model =
                                 (\individual ->
                                     let
                                         newRoles =
-                                            Dict.insert entityId roleId individual.roles
+                                            Dict.insert entityKey roleKey individual.roles
                                     in
                                         { individual | roles = newRoles }
                                 )
@@ -651,34 +665,20 @@ viewFooter =
         ]
 
 
-viewIndividual : Model -> Dict String Entity -> VariablesResponse -> Int -> Individual -> Html Msg
+viewIndividual : Model -> Entities -> VariablesResponse -> Int -> Individual -> Html Msg
 viewIndividual model entities variablesResponse individualIndex individual =
     let
-        individualLabel =
-            entities
-                |> Dict.toList
-                |> List.filterMap
-                    (\( _, entity ) ->
-                        if entity.isPersonsEntity then
-                            Just entity.label
-                        else
-                            Nothing
-                    )
-                |> List.head
-                |> -- TODO i18n
-                   Maybe.withDefault "Individual"
-
         viewIndividualRoles roles =
             div []
                 (roles
                     |> Dict.toList
                     |> List.filterMap
-                        (\( entityId, roleId ) ->
-                            findEntity entityId entities
+                        (\( entityKey, roleKey ) ->
+                            findGroupEntity entityKey entities.groups
                                 |> Maybe.andThen
                                     (\entity ->
-                                        findRole roleId entity.roles
-                                            |> Maybe.map (viewIndividualRole entities individualIndex entityId entity)
+                                        findRole roleKey entity.roles
+                                            |> Maybe.map (viewIndividualRole entities individualIndex entityKey entity)
                                     )
                         )
                 )
@@ -686,7 +686,7 @@ viewIndividual model entities variablesResponse individualIndex individual =
         div [ class "panel panel-default" ]
             [ div [ class "panel-heading" ]
                 [ h3 [ class "panel-title" ]
-                    [ text (individualLabel ++ " " ++ (toString (individualIndex + 1))) ]
+                    [ text (entities.individual.label ++ " " ++ (toString (individualIndex + 1))) ]
                 ]
             , ul [ class "list-group" ]
                 ([ li [ class "list-group-item" ]
@@ -761,21 +761,21 @@ viewIndividual model entities variablesResponse individualIndex individual =
             ]
 
 
-viewIndividualRole : Dict String Entity -> Int -> String -> Entity -> Role -> Html Msg
-viewIndividualRole entities individualIndex entityId entity role =
+viewIndividualRole : Entities -> Int -> EntityKey -> GroupEntity -> Role -> Html Msg
+viewIndividualRole entities individualIndex entityKey entity role =
     div [ class "form-group" ]
         [ label [] [ text entity.label ]
         , select
             [ class "form-control"
             , on "change"
-                (targetValue |> Decode.map (SetRole individualIndex entityId))
+                (targetValue |> Decode.map (SetRole individualIndex entityKey))
             ]
             (entity.roles
                 |> List.map
                     (\role1 ->
                         option
-                            [ selected (role1.key == role.key)
-                            , value (pluralOrKey role1)
+                            [ selected (role1.keySingular == role.keySingular)
+                            , value (role1.keyPlural |> Maybe.withDefault role1.keySingular)
                             ]
                             [ text role1.label ]
                     )
@@ -783,7 +783,7 @@ viewIndividualRole entities individualIndex entityId entity role =
         ]
 
 
-viewIndividuals : Model -> Dict String Entity -> VariablesResponse -> Html Msg
+viewIndividuals : Model -> Entities -> VariablesResponse -> Html Msg
 viewIndividuals model entities variablesResponse =
     div [ class "col-sm-4" ]
         ((model.individuals
@@ -936,6 +936,9 @@ viewInputValue model individualIndex variableName variableLabel inputValue =
                                 ]
                                 []
                             ]
+
+                        StringInputValue string ->
+                            [ text "TODO" ]
                    )
             )
 

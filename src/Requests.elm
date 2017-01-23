@@ -5,6 +5,7 @@ import Http
 import Json.Decode exposing (..)
 import Json.Decode.Extra exposing (..)
 import Json.Encode as Encode
+import List.Extra as List
 import Types exposing (..)
 
 
@@ -17,23 +18,32 @@ nbYearsPadding =
 
 
 
+-- TYPES (specific to encoders and decoders)
+
+
+type Entity
+    = IndividualE IndividualEntity
+    | GroupE GroupEntity
+
+
+
 -- ENCODERS
 
 
-encodeGroupEntities : Dict String GroupEntity -> List ( String, Encode.Value )
-encodeGroupEntities groupEntities =
-    groupEntities
+encodeGroupedIndividualIds : GroupedIndividualIds -> List ( RoleKey, Encode.Value )
+encodeGroupedIndividualIds groupedIndividualIds =
+    groupedIndividualIds
         |> Dict.toList
         |> List.map
-            (\( entityId, roles ) ->
-                ( entityId
+            (\( entityKey, roles ) ->
+                ( entityKey
                 , Encode.list
                     [ Encode.object
                         (roles
                             |> Dict.toList
                             |> List.map
-                                (\( roleId, individualIds ) ->
-                                    ( roleId, encodeIndividualIds individualIds )
+                                (\( roleKey, individualIds ) ->
+                                    ( roleKey, encodeIndividualIds individualIds )
                                 )
                         )
                     ]
@@ -41,7 +51,7 @@ encodeGroupEntities groupEntities =
             )
 
 
-encodeIndividualIds : List String -> Encode.Value
+encodeIndividualIds : List IndividualId -> Encode.Value
 encodeIndividualIds individualIds =
     case List.head individualIds of
         Nothing ->
@@ -74,12 +84,15 @@ encodeInputValue inputValue =
         IntInputValue int ->
             Encode.int int
 
+        StringInputValue string ->
+            Encode.string string
+
 
 encodeTestCase : List Individual -> Period -> List Axis -> Encode.Value
 encodeTestCase individuals year axes =
     Encode.object
         (( "individus"
-           -- TODO Do not hardcode it
+           -- TODO Do not hardcode "individus"
          , Encode.list
             (individuals
                 |> List.indexedMap
@@ -113,12 +126,12 @@ encodeTestCase individuals year axes =
                     )
             )
          )
-            :: case groupEntities individuals of
+            :: case groupByEntityAndRole individuals of
                 Nothing ->
                     []
 
-                Just groupEntities ->
-                    encodeGroupEntities groupEntities
+                Just groupedIndividualIds ->
+                    encodeGroupedIndividualIds groupedIndividualIds
         )
 
 
@@ -133,12 +146,32 @@ entityDecoder =
     -- (optionalField "roles" (dict roleDecoder)
     --     |> map (Maybe.map Dict.values >> Maybe.withDefault [])
     -- )
-    succeed Entity
-        |: (field "isPersonsEntity" bool |> withDefault False)
+    field "isPersonsEntity" bool
+        |> withDefault False
+        |> andThen
+            (\isPersonsEntity ->
+                if isPersonsEntity then
+                    individualEntityDecoder |> map IndividualE
+                else
+                    groupEntityDecoder |> map GroupE
+            )
+
+
+groupEntityDecoder : Decoder GroupEntity
+groupEntityDecoder =
+    succeed GroupEntity
+        |: (maybe (field "plural" string))
         |: (field "key" string)
         |: (field "label" string)
+        |: (field "roles" (list roleDecoder))
+
+
+individualEntityDecoder : Decoder IndividualEntity
+individualEntityDecoder =
+    succeed IndividualEntity
         |: (field "plural" string)
-        |: (field "roles" (list roleDecoder) |> withDefault [])
+        |: (field "key" string)
+        |: (field "label" string)
 
 
 roleDecoder : Decoder Role
@@ -149,10 +182,10 @@ roleDecoder =
     --     |> map (Maybe.map Dict.values >> Maybe.withDefault [])
     -- )
     succeed Role
+        |: (maybe (field "plural" string))
         |: (field "key" string)
         |: (field "label" string)
         |: (maybe (field "max" int))
-        |: (field "plural" string |> withDefault "")
         |: (field "subroles" (list string) |> withDefault [])
 
 
@@ -189,15 +222,16 @@ variableCommonFieldsDecoder =
         |: (field "source_code" string)
         |: (field "source_file_path" string)
         |: (field "start_line_number" int)
-        |: (field "@type" string)
 
 
 variableDecoder : Decoder Variable
 variableDecoder =
-    variableCommonFieldsDecoder
+    map2 (,)
+        variableCommonFieldsDecoder
+        (field "@type" string)
         |> andThen
-            (\variableCommonFields ->
-                case variableCommonFields.type_ of
+            (\( variableCommonFields, type_ ) ->
+                case type_ of
                     "Boolean" ->
                         map BoolVariableFields
                             (field "default" bool)
@@ -231,7 +265,7 @@ variableDecoder =
                             |> map (\fields -> StringVariable ( variableCommonFields, fields ))
 
                     _ ->
-                        fail ("Unsupported type: " ++ variableCommonFields.type_)
+                        fail ("Unsupported type: " ++ type_)
             )
 
 
@@ -260,9 +294,64 @@ variablesResponseDecoder =
 -- REQUESTS
 
 
-entities : String -> Http.Request (Dict String Entity)
+entities : String -> Http.Request Entities
 entities baseUrl =
-    Http.get (baseUrl ++ "/2/entities") (field "entities" (dict entityDecoder))
+    Http.get
+        (baseUrl ++ "/2/entities")
+        (field "entities" (dict entityDecoder)
+            |> map Dict.values
+            |> andThen
+                (\entities ->
+                    let
+                        individualEntity =
+                            entities
+                                |> List.find
+                                    (\entity ->
+                                        case entity of
+                                            IndividualE _ ->
+                                                True
+
+                                            GroupE _ ->
+                                                False
+                                    )
+                                |> Maybe.andThen
+                                    (\entity ->
+                                        case entity of
+                                            IndividualE individualEntity ->
+                                                Just individualEntity
+
+                                            GroupE _ ->
+                                                Nothing
+                                    )
+
+                        groupEntities =
+                            entities
+                                |> List.filterMap
+                                    (\entity ->
+                                        case entity of
+                                            IndividualE _ ->
+                                                Nothing
+
+                                            GroupE groupEntity ->
+                                                Just groupEntity
+                                    )
+                    in
+                        case individualEntity of
+                            Nothing ->
+                                fail "One person entity must exist."
+
+                            Just individualEntity ->
+                                case groupEntities of
+                                    [] ->
+                                        fail "At least one group entity must exist."
+
+                                    _ ->
+                                        succeed
+                                            { individual = individualEntity
+                                            , groups = groupEntities
+                                            }
+                )
+        )
 
 
 simulate : String -> List Individual -> Period -> List Axis -> Http.Request SimulateNode
