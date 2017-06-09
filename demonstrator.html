@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!-- The above 3 meta tags *must* come first in the head; any other head content must come *after* these tags -->
+    <meta name="description" content="">
+    <meta name="author" content="">
+    <link rel="icon" href="/favicon.ico">
+
+    <title>Demonstateur de l'API Web OpenFisca</title>
+    <!-- <script src="demo.js"></script> -->
+    <!-- Latest compiled and minified CSS -->
+    <script src="https://code.jquery.com/jquery-3.2.1.min.js"
+    integrity="sha256-hwg4gsxgFZhOsEEamdOYGBf13FyQuiTwlAQgxVSNgt4="
+    crossorigin="anonymous"></script>
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u" crossorigin="anonymous">
+
+    <!-- Optional theme -->
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap-theme.min.css" integrity="sha384-rHyoN1iRsVXV4nD0JutlnGaslCJuC7uwjduW9SVrLvRYooPp2bWYgmgJQIXwl/Sp" crossorigin="anonymous">
+
+    <!-- Latest compiled and minified JavaScript -->
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js" integrity="sha384-Tc5IQib027qvyjSMfHjOMaLkfuWVxZxUPnCJA7l2mCWNIpG9mGCD8wGNIcPD7Txa" crossorigin="anonymous"></script>
+    <script type="text/javascript">
+      //Variables globales
+      var salary1 = 0
+      var salary2 = 0
+      var revenuDisponible = 0
+
+      // Fonctions
+      // Cette fonction fait varier le JSON envoyé en fonction de la variable calculée
+      function adaptJSONtoSituation(variable_demandee){
+        var scenarioObj = {
+                    scenarios: [
+                      {
+                        test_case: {
+                          familles: [
+                            {
+                              parents: ["individu0", "individu1"]
+                            }
+                          ],
+                          foyers_fiscaux: [
+                            {
+                              declarants: ["individu0", "individu1"],
+                            }
+                          ],
+                          individus: [
+                            {
+                              date_naissance: "1980-01-01",
+                              id: "individu0",
+                              salaire_de_base: salary1
+                            },
+                            {
+                              date_naissance: "1982-01-01",
+                              id: "individu1",
+                              salaire_de_base: salary2
+                            }
+                          ],
+                          menages: [
+                            {
+                              personne_de_reference: "individu0",
+                              conjoint:"individu1"
+                            }
+                          ]
+                        },
+                        period: "2016"
+                      }
+                    ],
+                    variables: [variable_demandee]
+          }
+        var scenarioString = JSON.stringify(scenarioObj)
+
+
+        return scenarioString
+        }
+      // Cette fonction gère l'affichage conditionnée des infos
+      function displayInfo(variableDemandee, responseFromAPI){
+        if (variableDemandee == 'revenu_disponible'){
+          //Formatage de la donnée
+          revenuDisponible = responseFromAPI.value[0].menages[0].revenu_disponible["2016"];
+          //Display du texte du revenu disponible
+          document.getElementById("txtRevenuDisponible").innerHTML=(Math.round(revenuDisponible).toLocaleString("fr")) + " €/an, c'est à dire " + (Math.round(revenuDisponible/12).toLocaleString("fr")) + " €/mois pour ce ménage";
+        } else if (variableDemandee == 'impots_directs'){
+          //Formatage de la donnée
+          impotsDirects = responseFromAPI.value[0].menages[0].impots_directs["2016"];
+          var txDImposition = Math.round((-impotsDirects)*100/(-impotsDirects + revenuDisponible))
+          var txDisponible = Math.round(100 - txDImposition)
+          //Display du texte des impots directs
+          document.getElementById("txtImpotsDirects").innerHTML=(Math.round(impotsDirects).toLocaleString("fr")) + " €/an, c'est à dire " + (Math.round(impotsDirects/12).toLocaleString("fr")) + " €/mois pour ce ménage";
+          //Display du texte sur le taux d'imposition
+          document.getElementById("txttaux").innerHTML="Le taux d'imposition de ce ménage est de " + txDImposition + "%";
+          //Display de la couleur dans la barre
+          document.getElementById("barRevenuDisponible").innerHTML='<div class="progress-bar progress-bar-success" style="width: '+ txDisponible +'%"><span class="sr-only">Revenu disponible</span></div>';
+          document.getElementById("barImpotsDirects").innerHTML='<div class="progress-bar progress-bar-warning progress-bar-striped" style="width: '+ txDImposition +'%"><span class="sr-only">Impots directs</span></div>';
+
+        } else {
+          console.log(responseFromAPI)
+        }
+
+        }
+      // Cette fonction lance les appels à l'API pour toutes les variables
+      function switchBoard(){
+        complexCalculation("revenu_disponible");
+        complexCalculation("impots_directs")
+        }
+      // Cette fonction lance les appels à l'API pour une variable
+      function complexCalculation(variableDemandee){
+        var xmlhttp = new XMLHttpRequest();
+        var url = "https://api.openfisca.fr/api/1/calculate";
+        var json = adaptJSONtoSituation(variableDemandee);
+        xmlhttp.open("POST", url, true);
+
+        xmlhttp.onreadystatechange=function() {
+          if (xmlhttp.readyState==4 && xmlhttp.status==200) {
+            responseFromAPI = JSON.parse(xmlhttp.responseText);
+            displayInfo(variableDemandee, responseFromAPI)
+            }
+          };
+          xmlhttp.setRequestHeader("Content-Type", "application/json");
+          xmlhttp.send(json);
+        }
+
+    </script>
+  </head>
+
+  <body>
+
+    <nav class="navbar navbar-inverse navbar-fixed-top">
+      <div class="container">
+        <div class="navbar-header">
+          <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar" aria-expanded="false" aria-controls="navbar">
+            <span class="sr-only">Toggle navigation</span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+          </button>
+          <a class="navbar-brand" href="#">Démonstrateur OpenFisca</a>
+        </div>
+        <div id="navbar" class="navbar-collapse collapse">
+        </div><!--/.navbar-collapse -->
+      </div>
+    </nav>
+
+    <!-- Message d'openfisca -->
+    <div class="jumbotron">
+      <div class="container">
+        <h1>Testez Openfisca</h1>
+        <p>OpenFisca est un simulateur socio-fiscal en cours de développement.
+        Cet outil est un démonstrateur des capacités calculatoire de l'API openfisca.</p>
+        <ul>
+        <li>Les données que vous saisissez ne sont jamais stockées.</li>
+        <li>Les résultats affichés n'ont en aucun cas un caractère officiel.</li>
+        <li>Les résultats des simulations peuvent comporter des erreurs, et vous pouvez commencer à contribuer au projet en les faisant remonter si vous les détectez.</li>
+        </ul>
+      </div>
+    </div>
+    <!-- simulateur -->
+    <div class="container">
+      <div class="row">
+        <div class="col-md-4">
+          <h2>Simulateur de revenu disponible</h2>
+            <p>Calcul du revenu disponible pour un ménage composé de 2 adultes</p>
+          </div>
+        <!-- entrée des données -->
+        <div class="col-md-4">
+          <h3>Example</h3>
+          <form action="javascript:void(0);">
+            <p><b>Entrez le salaire annuel de la première personne :</b></p>
+            <p>
+              <input type="text" onkeyup="salary1 = this.value" size="20" placeholder="15000" onfocus="this.placeholder=''">
+            </p>
+            <p><b>Entrez le salaire annuel de la seconde personne :</b></p>
+            <p>
+            <input type="text" onkeyup="salary2 = this.value" size="20" placeholder="25000" onfocus="this.placeholder=''">
+            </p>
+            <p>
+            </p>
+              <button type="button" class="btn btn-primary" onclick="switchBoard()"> Calculer </button>
+          </form>
+          </div>
+         <!-- Visualisation -->
+        <div class="col-md-4">
+          <h3>Résultats</h3>
+          <!-- partie sur les revenus disponibles -->
+          <div class="progress" style="width: 40%">
+            <div class="progress-bar progress-bar-success" style="width: 100%">
+              <span style="color: black; font-weight:bold">Revenus disponibles</span>
+              </div>
+            </div>
+          <span id="txtRevenuDisponible"></span>
+
+             <!-- partie sur les impots directs -->
+            <div class="progress" style="width: 40%">
+            <div class="progress-bar progress-bar-warning progress-bar-striped" style="width: 100%">
+              <span style="color: black; font-weight:bold">Impots directs</span>
+              </div>
+            </div>
+          <span id="txtImpotsDirects"></span>
+          <!-- partie sur la visualisation -->
+          <h3>Visualisation</h3>
+          <span id="txttaux"></span>
+          <div class="progress">
+            <span id="barRevenuDisponible"></span>
+            <span id="barImpotsDirects"></span>
+            </div>
+          </div>
+        </div>
+      <hr>
+      </div>
+
+
+      <footer>
+        <p>&copy; 2016 OpenFisca-France.</p>
+      </footer>
+    </div> <!-- /container -->
+  </body>
+</html>
