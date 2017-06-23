@@ -10,8 +10,6 @@
     <link rel="icon" href="/favicon.ico">
 
     <title>Demonstateur de l'API Web OpenFisca</title>
-    <!-- <script src="demo.js"></script> -->
-    <!-- Latest compiled and minified CSS -->
     <script src="https://code.jquery.com/jquery-3.2.1.min.js"
     integrity="sha256-hwg4gsxgFZhOsEEamdOYGBf13FyQuiTwlAQgxVSNgt4="
     crossorigin="anonymous"></script>
@@ -22,17 +20,25 @@
 
     <!-- Latest compiled and minified JavaScript -->
     <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js" integrity="sha384-Tc5IQib027qvyjSMfHjOMaLkfuWVxZxUPnCJA7l2mCWNIpG9mGCD8wGNIcPD7Txa" crossorigin="anonymous"></script>
+    <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
     <script type="text/javascript">
       //Variables globales
-      var salary1 = 25000
-      var salary2 = 15000
+      var salaire1 = 25000
+      var salaire2 = 15000
       var revenuDisponible = 0
 
-      window.addEventListener('load', switchBoard, false);
+      window.addEventListener('load', appelALAPI, false);
 
       // Fonctions
-      // Cette fonction fait varier le JSON envoyé en fonction de la variable calculée
-      function adaptJSONtoSituation(variable_demandee){
+      function miseAjourDesSalaires(salaire, montant){
+        if (salaire == "salaire1"){
+          salaire1 = Number(montant);
+        }else if (salaire == "salaire2"){
+          salaire2 = Number(montant);
+        };
+        appelALAPI()
+      }
+      function JSONDeLaSituation(){
         var scenarioObj = {
                     scenarios: [
                       {
@@ -51,12 +57,12 @@
                             {
                               date_naissance: "1980-01-01",
                               id: "individu0",
-                              salaire_de_base: salary1
+                              salaire_de_base: salaire1
                             },
                             {
                               date_naissance: "1982-01-01",
                               id: "individu1",
-                              salaire_de_base: salary2
+                              salaire_de_base: salaire2
                             }
                           ],
                           menages: [
@@ -69,71 +75,80 @@
                         period: "2016"
                       }
                     ],
-                    variables: [variable_demandee]
+                    variables: ["revenu_disponible"],
+                    intermediate_variables: true
           }
         var scenarioString = JSON.stringify(scenarioObj)
-
-
         return scenarioString
         }
-      // Cette fonction gère l'affichage conditionnée des infos
-      function displayInfo(variableDemandee, responseFromAPI){
-        if (variableDemandee == 'revenu_disponible'){
-          //Formatage de la donnée
-          revenuDisponible = responseFromAPI.value[0].menages[0].revenu_disponible["2016"];
-          //Display du texte du revenu disponible
-          document.getElementById("txtRevenuDisponible").innerHTML="<li>dispose d'un <strong>revenu disponible</strong> de " + (Math.round(revenuDisponible).toLocaleString("fr")) + " €/an, c'est à dire " + (Math.round(revenuDisponible/12).toLocaleString("fr")) + " €/mois ;</li>";
-        } else if (variableDemandee == 'impots_directs'){
-          //Formatage de la donnée
-          impotsDirects = -(responseFromAPI.value[0].menages[0].impots_directs["2016"]);
-          var txDImposition = -Math.round((-impotsDirects)*100/(-impotsDirects + revenuDisponible))
-          var txDisponible = Math.round(100 - txDImposition)
-          //Display du texte des impots directs
-          document.getElementById("txtImpotsDirects").innerHTML="<li> est <strong>imposé directement</strong> à hauteur de "+txDImposition+"% ("+ (Math.round(impotsDirects).toLocaleString("fr")) + " €/an, c'est à dire " + (Math.round(impotsDirects/12).toLocaleString("fr")) + " €/mois) ;</li>";
-          //Display du texte sur le taux d'imposition
-          document.getElementById("txttaux").innerHTML="<li>perçoit xxx euros de <strong>prestations sociales</strong> par an, c'est à dire YYYY par mois.</li>";
-          //Display de la couleur dans la barre
-          document.getElementById("barRevenuDisponible").innerHTML='<div class="progress-bar progress-bar-success" style="width: '+ txDisponible +'%"><span class="sr-only">Revenu disponible</span></div>';
-          document.getElementById("barImpotsDirects").innerHTML='<div class="progress-bar progress-bar-warning progress-bar-striped" style="width: '+ txDImposition +'%"><span class="sr-only">Impots directs</span></div>';
-
-        } else {
-          console.log(responseFromAPI)
-        }
-
-        }
-      // Cette fonction lance les appels à l'API pour toutes les variables
-      function switchBoard(){
-          complexCalculation("revenu_disponible");
-          complexCalculation("impots_directs");
-          //complexCalculation("prestations_sociales")
-          };
-  
-      function updateStatus(salary, amount){
-        console.log("helloA");
-        if (salary == "salary1"){
-          salary2 = amount;
-        }else if (salary == "salary2"){
-          salary2 = amount;
-        };
-        switchBoard()
-      }
-
-      // Cette fonction lance les appels à l'API pour une variable
-      function complexCalculation(variableDemandee){
+      function appelALAPI(){
         var xmlhttp = new XMLHttpRequest();
         var url = "https://api.openfisca.fr/api/1/calculate";
-        var json = adaptJSONtoSituation(variableDemandee);
+        var json = JSONDeLaSituation();
         xmlhttp.open("POST", url, true);
 
         xmlhttp.onreadystatechange=function() {
+          //console.log(xmlhttp.responseText)
           if (xmlhttp.readyState==4 && xmlhttp.status==200) {
             responseFromAPI = JSON.parse(xmlhttp.responseText);
-            displayInfo(variableDemandee, responseFromAPI)
+            //console.log(responseFromAPI || xmlhttp.responseText);
+            transformationDeLaDonnee(responseFromAPI);
             }
           };
-          xmlhttp.setRequestHeader("Content-Type", "application/json");
-          xmlhttp.send(json);
+        xmlhttp.setRequestHeader("Content-Type", "application/json");
+        xmlhttp.send(json);
         }
+      function transformationDeLaDonnee(responseFromAPI) {
+        var resultats = {};
+        results["revenu_disponible"] = Math.round(responseFromAPI.value[0].menages[0].revenu_disponible["2016"]);
+        results["impots_directs"] = -Math.round((responseFromAPI.value[0].menages[0].impots_directs["2016"]));
+        results["revenus_du_travail"] = 0;
+        for (var individu in responseFromAPI.value[0].individus){
+          results["revenus_du_travail"] += Math.round(responseFromAPI.value[0].individus[individu].revenus_du_travail["2016"]);
+            }
+        results["prestations_sociales"] = Math.round(responseFromAPI.value[0].familles[0].prestations_sociales["2016"]);
+        results["txDImposition"] = Math.round((results["impots_directs"])*100/(results["impots_directs"] + (results["revenu_disponible"])));
+        results["txDisponible"] = Math.round(100 - results["txDImposition"]);
+        results["salairesBruts"] = salaire1 + salaire2;
+        results["chargesSalariales"] = results["salairesBruts"] - results["revenus_du_travail"];
+        affichageDeLInformation(results);
+        };
+      function affichageDeLInformation(results){
+        console.log(results);
+        document.getElementById("txtRevenuDisponible").innerHTML=`
+          <li>dispose d'un <strong>revenu disponible</strong> de ` + (Math.round(results["revenu_disponible"])).toLocaleString("fr") + ` €/an, c'est à dire ` + (Math.round(results["revenu_disponible"]/12)).toLocaleString("fr") + ` €/mois ;</li>
+          <li> est <strong>imposé directement</strong> à hauteur de `+ results["txDImposition"]+`%( `+results["impots_directs"].toLocaleString("fr") + ` €/an, c'est à dire `+ Math.round(results["impots_directs"]/12).toLocaleString("fr") + ` €/mois) ;</li>
+          <li>perçoit `+results["prestations_sociales"].toLocaleString("fr")+ ` €/an de <strong>prestations sociales</strong>, c'est à dire `+ Math.round(results["prestations_sociales"]/12).toLocaleString("fr") + ` €/mois.</li>`;
+          //Display du graph
+          google.charts.load('current', {'packages':['treemap']});
+          google.charts.setOnLoadCallback(drawChart);
+          function drawChart() {
+            var data = google.visualization.arrayToDataTable([
+              ['Element', 'Source', 'Montant', 'Montant (color)'],
+              ['Salaires bruts',null, results["salairesBruts"], results["salairesBruts"]],
+              ['Charges salariales', 'Salaires bruts', results["chargesSalariales"], - results["chargesSalariales"]],
+              
+              ['Impots directs', 'Salaires bruts', results["impots_directs"] , - results["impots_directs"] ],
+              ['Revenu disponible', 'Salaires bruts', results["revenu_disponible"],                               results["revenu_disponible"]],
+              ['Revenu du travail', 'Revenu disponible', results["revenus_du_travail"],                               results["revenus_du_travail"]],
+              ['Prestations sociales', 'Revenu disponible', results["prestations_sociales"], results["prestations_sociales"]],
+            ]);
+
+            tree = new google.visualization.TreeMap(document.getElementById('chart_div'));
+
+            tree.draw(data, {
+              minColor: '#5bc0de',
+              midColor: '#5bc0de',
+              maxColor: '#5cb85c',
+              headerHeight: 55,
+              fontColor: 'black',
+              showScale: true
+            });
+
+          }
+          document.getElementById("graph").innerHTML='<div id="chart_div" style="width: 100%; height: 100%;"></div>';
+
+        } 
     </script>
   </head>
 
@@ -147,14 +162,23 @@
             <span class="icon-bar"></span>
             <span class="icon-bar"></span>
           </button>
-          <a class="navbar-brand" href="#">Project name</a>
+          <a class="navbar-brand" href="https://openfisca.fr/">OpenFisca</a>
         </div>
         <div id="navbar" class="collapse navbar-collapse">
           <ul class="nav navbar-nav">
-            <li class="active"><a href="#">Home</a></li>
-            <li><a href="#about">About</a></li>
-            <li><a href="#contact">Contact</a></li>
+            <li><a href="https://doc.openfisca.fr/">Documentation</a></li>
           </ul>
+          <ul class="nav navbar-nav navbar-right">
+            <li><a href="/contact">Contact</a></li>
+            <li class="dropdown">
+              <a href="#" class="dropdown-toggle" data-toggle="dropdown">Français<span class="caret"></span></a>
+                <ul class="dropdown-menu" role="menu">
+                  <li role="presentation" class="dropdown-header">France</li>
+                  <li><a href="/">Français</a></li>
+                  <li><a href="/en">English</a></li>
+                </ul>
+              </li>
+            </ul>
         </div><!--/.nav-collapse -->
       </div>
     </nav>
@@ -172,47 +196,38 @@
           <form action="javascript:void(0);">
             <p><b>Salaire annuel brut du premier conjoint :</b></p>
             <p>
-              <input type="text" onkeyup= updateStatus("salary1",this.value) size="20" value="15000"> €/an
+              <input type="text" onkeyup= miseAjourDesSalaires("salaire1",this.value) size="20" value="25000"> €/an
             </p>
             <p><b>Salaire annuel brut du second conjoint :</b></p>
             <p>
-            <input type="text" onkeyup=updateStatus("salary2",this.value size="20" value="15000">€/an
+            <input type="text" onkeyup=miseAjourDesSalaires("salaire2",this.value) size="20" value="15000"> €/an
             </p>
             <p>
             </p>
           </form>
           </div>
-        <div class="col-md-4">
-          <p>Pour un ménage, composé de 2 adultes sans enfants, et qui ne perçoit ni pensions ni revenus du capital :</p>
+        <div class="col-md-8">
+          <p>Ce ménage, composé de 2 adultes sans enfants, et qui ne perçoit ni pensions ni revenus du capital :</p>
           <span id="txtRevenuDisponible"></span>
-          <span id="txtImpotsDirects"></span>
-          <span id="txttaux"></span>
         </div>
-         <!-- Visualisation -->
+      </div>
+      <hr>
+      <div class="row">
+        <!-- entrée des données -->
         <div class="col-md-4">
+        <h3>Visualisation</h3>
+          <ul>
+          <li>Cliquez sur "Revenu disponible" pour en voir le détail.</li>
+          <li>Faites un clic-droit pour revenir à la distribution précédente.</li>
+          </ul>
+          </div>
+       <!-- Visualisation -->
+        <div class="col-md-8">
           <!-- partie sur les revenus disponibles -->
-          <div class="progress" style="width: 40%">
-            <div class="progress-bar progress-bar-success" style="width: 100%">
-              <span style="color: black; font-weight:bold">Revenus disponibles</span>
-              </div>
-            </div>
-          <span id="txtRevenuDisponible"></span>
-
-             <!-- partie sur les impots directs -->
-            <div class="progress" style="width: 40%">
-            <div class="progress-bar progress-bar-warning progress-bar-striped" style="width: 100%">
-              <span style="color: black; font-weight:bold">Impots directs</span>
-              </div>
-            </div>
-          <span id="txtImpotsDirects"></span>
-          <!-- partie sur la visualisation -->
-          <span id="txttaux"></span>
-          <div class="progress">
-            <span id="barRevenuDisponible"></span>
-            <span id="barImpotsDirects"></span>
-            </div>
+          <span id="graph"></span>
           </div>
         </div>
+      </div>
       <hr>
       </div>
 
