@@ -24,9 +24,11 @@
     <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js" integrity="sha384-Tc5IQib027qvyjSMfHjOMaLkfuWVxZxUPnCJA7l2mCWNIpG9mGCD8wGNIcPD7Txa" crossorigin="anonymous"></script>
     <script type="text/javascript">
       //Variables globales
-      var salary1 = 0
-      var salary2 = 0
+      var salary1 = 25000
+      var salary2 = 15000
       var revenuDisponible = 0
+
+      window.addEventListener('load', switchBoard, false);
 
       // Fonctions
       // Cette fonction fait varier le JSON envoyé en fonction de la variable calculée
@@ -80,16 +82,16 @@
           //Formatage de la donnée
           revenuDisponible = responseFromAPI.value[0].menages[0].revenu_disponible["2016"];
           //Display du texte du revenu disponible
-          document.getElementById("txtRevenuDisponible").innerHTML=(Math.round(revenuDisponible).toLocaleString("fr")) + " €/an, c'est à dire " + (Math.round(revenuDisponible/12).toLocaleString("fr")) + " €/mois pour ce ménage";
+          document.getElementById("txtRevenuDisponible").innerHTML="<li>dispose d'un <strong>revenu disponible</strong> de " + (Math.round(revenuDisponible).toLocaleString("fr")) + " €/an, c'est à dire " + (Math.round(revenuDisponible/12).toLocaleString("fr")) + " €/mois ;</li>";
         } else if (variableDemandee == 'impots_directs'){
           //Formatage de la donnée
-          impotsDirects = responseFromAPI.value[0].menages[0].impots_directs["2016"];
-          var txDImposition = Math.round((-impotsDirects)*100/(-impotsDirects + revenuDisponible))
+          impotsDirects = -(responseFromAPI.value[0].menages[0].impots_directs["2016"]);
+          var txDImposition = -Math.round((-impotsDirects)*100/(-impotsDirects + revenuDisponible))
           var txDisponible = Math.round(100 - txDImposition)
           //Display du texte des impots directs
-          document.getElementById("txtImpotsDirects").innerHTML=(Math.round(impotsDirects).toLocaleString("fr")) + " €/an, c'est à dire " + (Math.round(impotsDirects/12).toLocaleString("fr")) + " €/mois pour ce ménage";
+          document.getElementById("txtImpotsDirects").innerHTML="<li> est <strong>imposé directement</strong> à hauteur de "+txDImposition+"% ("+ (Math.round(impotsDirects).toLocaleString("fr")) + " €/an, c'est à dire " + (Math.round(impotsDirects/12).toLocaleString("fr")) + " €/mois) ;</li>";
           //Display du texte sur le taux d'imposition
-          document.getElementById("txttaux").innerHTML="Le taux d'imposition de ce ménage est de " + txDImposition + "%";
+          document.getElementById("txttaux").innerHTML="<li>perçoit xxx euros de <strong>prestations sociales</strong> par an, c'est à dire YYYY par mois.</li>";
           //Display de la couleur dans la barre
           document.getElementById("barRevenuDisponible").innerHTML='<div class="progress-bar progress-bar-success" style="width: '+ txDisponible +'%"><span class="sr-only">Revenu disponible</span></div>';
           document.getElementById("barImpotsDirects").innerHTML='<div class="progress-bar progress-bar-warning progress-bar-striped" style="width: '+ txDImposition +'%"><span class="sr-only">Impots directs</span></div>';
@@ -101,9 +103,21 @@
         }
       // Cette fonction lance les appels à l'API pour toutes les variables
       function switchBoard(){
-        complexCalculation("revenu_disponible");
-        complexCalculation("impots_directs")
-        }
+          complexCalculation("revenu_disponible");
+          complexCalculation("impots_directs");
+          //complexCalculation("prestations_sociales")
+          };
+  
+      function updateStatus(salary, amount){
+        console.log("helloA");
+        if (salary == "salary1"){
+          salary2 = amount;
+        }else if (salary == "salary2"){
+          salary2 = amount;
+        };
+        switchBoard()
+      }
+
       // Cette fonction lance les appels à l'API pour une variable
       function complexCalculation(variableDemandee){
         var xmlhttp = new XMLHttpRequest();
@@ -120,12 +134,10 @@
           xmlhttp.setRequestHeader("Content-Type", "application/json");
           xmlhttp.send(json);
         }
-
     </script>
   </head>
 
   <body style="padding-top: 65px;">
-
     <nav class="navbar navbar-inverse navbar-fixed-top">
       <div class="container">
         <div class="navbar-header">
@@ -151,33 +163,33 @@
     <!-- simulateur -->
     <div class="container">
       <div class="page-header">
-          <h1>Bootstrap grid examples</h1>
+          <h1>Calcul du revenu disponible</h1>
+          <p class="lead">Le revenu disponible représente l'ensembles des revenus issus du travail, des pensions, des revenus du capital et des prestations sociales, auxquelles on soustrait les impots directs du ménage.</p>
         </div>
       <div class="row">
-        <div class="col-md-4">
-          <h2>Simulateur de revenu disponible</h2>
-            <p>Calcul du revenu disponible pour un ménage composé de 2 adultes</p>
-          </div>
         <!-- entrée des données -->
         <div class="col-md-4">
-          <h3>Example</h3>
           <form action="javascript:void(0);">
-            <p><b>Entrez le salaire annuel de la première personne :</b></p>
+            <p><b>Salaire annuel brut du premier conjoint :</b></p>
             <p>
-              <input type="text" onkeyup="salary1 = this.value" size="20" placeholder="15000" onfocus="this.placeholder=''">
+              <input type="text" onkeyup= updateStatus("salary1",this.value) size="20" value="15000"> €/an
             </p>
-            <p><b>Entrez le salaire annuel de la seconde personne :</b></p>
+            <p><b>Salaire annuel brut du second conjoint :</b></p>
             <p>
-            <input type="text" onkeyup="salary2 = this.value" size="20" placeholder="25000" onfocus="this.placeholder=''">
+            <input type="text" onkeyup=updateStatus("salary2",this.value size="20" value="15000">€/an
             </p>
             <p>
             </p>
-              <button type="button" class="btn btn-primary" onclick="switchBoard()"> Calculer </button>
           </form>
           </div>
+        <div class="col-md-4">
+          <p>Pour un ménage, composé de 2 adultes sans enfants, et qui ne perçoit ni pensions ni revenus du capital :</p>
+          <span id="txtRevenuDisponible"></span>
+          <span id="txtImpotsDirects"></span>
+          <span id="txttaux"></span>
+        </div>
          <!-- Visualisation -->
         <div class="col-md-4">
-          <h3>Résultats</h3>
           <!-- partie sur les revenus disponibles -->
           <div class="progress" style="width: 40%">
             <div class="progress-bar progress-bar-success" style="width: 100%">
@@ -194,7 +206,6 @@
             </div>
           <span id="txtImpotsDirects"></span>
           <!-- partie sur la visualisation -->
-          <h3>Visualisation</h3>
           <span id="txttaux"></span>
           <div class="progress">
             <span id="barRevenuDisponible"></span>
@@ -207,7 +218,7 @@
 
 
       <footer>
-        <p>OpenFisca-France@XXXXXXXX (insérer la ve</p>
+        <p>OpenFisca-France@XXXXXXXX (insérer la version)</p>
       </footer>
     </div> <!-- /container -->
   </body>
