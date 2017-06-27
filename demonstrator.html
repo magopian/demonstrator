@@ -99,7 +99,7 @@
         xmlhttp.send(json);
         }
       function transformationDeLaDonnee(responseFromAPI) {
-        var resultats = {};
+        var results = {};
         results["revenu_disponible"] = Math.round(responseFromAPI.value[0].menages[0].revenu_disponible["2016"]);
         results["impots_directs"] = -Math.round((responseFromAPI.value[0].menages[0].impots_directs["2016"]));
         results["revenus_du_travail"] = 0;
