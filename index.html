@@ -38,7 +38,7 @@
             apiBaseUrl: apiBaseUrl,
             displayDisclaimer: displayDisclaimer
         }
-        var app = runElmProgram(flags)
+        var app = Elm.Main.fullscreen(flags)
         if (app) { // app is null when there are compilation errors.
             setupLocalStoragePort(app)
             setupWaterfallPort(app)
