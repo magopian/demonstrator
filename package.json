@@ -2,9 +2,11 @@
   "name": "openfisca-demonstrator",
   "version": "0.0.1",
   "scripts": {
-    "lint": "eslint static"
+    "lint": "eslint static",
+    "build": "elm make src/Main.elm --warn --output=dist/main.js && cp -r static dist && cp index.html dist"
   },
   "devDependencies": {
+    "elm-format": "^0.6.1-alpha",
     "eslint": "^3.12.2"
   }
 }
